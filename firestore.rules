@@ -1,0 +1,139 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (must match auth.uid)
+    // Fields:
+    //   - uid: string (required)
+    //   - name: string (optional)
+    //   - email: string (required, can be empty for anonymous)
+    //   - role: string (required, 'admin' or 'client')
+    //   - address: map (optional)
+    //   - createdAt: timestamp (required)
+    //   - source: string (optional)
+    //   - isAnonymous: bool (optional)
+    //
+    // Collection: orders
+    // Document ID: auto-generated
+    // Fields:
+    //   - userId: string (required)
+    //   - customerName: string (required)
+    //   - items: list (required)
+    //   - subtotal: number (optional)
+    //   - discountAmount: number (optional)
+    //   - promotionName: string (optional)
+    //   - deliveryFee: number (optional)
+    //   - total: number (required)
+    //   - address: map (required)
+    //   - deliveryDate: string (required)
+    //   - deliveryTime: string (required)
+    //   - status: string (required)
+    //   - createdAt: timestamp (required)
+    //
+    // Collection: delivery_slots
+    // Document ID: {date}_{time}
+    // Fields:
+    //   - date: string (required)
+    //   - time: string (required)
+    //   - count: number (required)
+    //
+    // ===============================================================
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.email == "brballmaster@gmail.com" ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isValidUser(data) {
+      let allowedFields = ['uid', 'name', 'email', 'role', 'address', 'createdAt', 'source', 'isAnonymous'];
+      
+      return data.keys().hasOnly(allowedFields) &&
+             data.uid == request.auth.uid &&
+             data.email is string &&
+             (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
+             data.role in ['admin', 'client'] &&
+             (!('address' in data) || data.address is map) &&
+             data.createdAt is timestamp &&
+             (!('source' in data) || (data.source is string && data.source.size() <= 50)) &&
+             (!('isAnonymous' in data) || data.isAnonymous is bool);
+    }
+
+    function isValidOrder(data) {
+      let requiredFields = ['userId', 'customerName', 'items', 'total', 'address', 'deliveryType', 'paymentMethod', 'deliveryDate', 'deliveryTime', 'status', 'createdAt'];
+      
+      return data.keys().hasAll(requiredFields) &&
+             data.userId == request.auth.uid &&
+             data.customerName is string &&
+             data.items is list &&
+             data.total is number &&
+             data.address is map &&
+             data.deliveryType is string &&
+             data.deliveryType in ['delivery', 'pickup'] &&
+             data.status in ['pending', 'confirmed', 'delivered', 'cancelled'] &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidDeliverySlot(data) {
+      return data.keys().hasOnly(['date', 'time', 'count']) &&
+             data.keys().hasAll(['date', 'time', 'count']) &&
+             data.date is string && data.date.size() > 0 && data.date.size() <= 20 &&
+             data.time is string && data.time.size() > 0 && data.time.size() <= 10 &&
+             data.count is number && data.count >= 0;
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
+                      request.resource.data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+                      (request.resource.data.role == 'client' || isAdmin());
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() && (isAdmin() || (isValidOrder(request.resource.data) && request.resource.data.status == 'pending'));
+      allow update, delete: if isAdmin();
+    }
+
+    match /delivery_slots/{slotId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && isValidDeliverySlot(request.resource.data);
+      allow update: if isAuthenticated() && isValidDeliverySlot(request.resource.data) &&
+                    request.resource.data.count == resource.data.count + 1 &&
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['count']);
+      allow delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockQuantity']) &&
+        request.resource.data.stockQuantity < resource.data.stockQuantity &&
+        request.resource.data.stockQuantity >= 0
+      );
+    }
+  }
+}

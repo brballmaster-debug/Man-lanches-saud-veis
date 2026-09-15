@@ -1,0 +1,93 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string", "enum": ["admin", "client"] },
+        "address": {
+          "type": "object",
+          "properties": {
+            "street": { "type": "string" },
+            "number": { "type": "string" },
+            "neighborhood": { "type": "string" },
+            "complement": { "type": "string" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer order",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "name": { "type": "string" },
+              "price": { "type": "number" },
+              "quantity": { "type": "number" }
+            }
+          }
+        },
+        "subtotal": { "type": "number" },
+        "deliveryFee": { "type": "number" },
+        "total": { "type": "number" },
+        "address": {
+          "type": "object",
+          "properties": {
+            "street": { "type": "string" },
+            "number": { "type": "string" },
+            "neighborhood": { "type": "string" },
+            "complement": { "type": "string" }
+          }
+        },
+        "deliveryDate": { "type": "string" },
+        "deliveryTime": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "delivered", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "customerName", "items", "total", "address", "deliveryDate", "deliveryTime", "status", "createdAt"]
+    },
+    "DeliverySlot": {
+      "title": "DeliverySlot",
+      "description": "Tracks the number of orders per delivery slot",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "count": { "type": "number" }
+      },
+      "required": ["date", "time", "count"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles"
+    },
+    "orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Stores customer orders"
+    },
+    "delivery_slots/{slotId}": {
+      "schema": { "$ref": "#/entities/DeliverySlot" },
+      "description": "Tracks order counts for specific delivery slots"
+    },
+    "settings/{settingId}": {
+      "schema": "object",
+      "description": "Stores application settings like store status, special offers, and banners"
+    }
+  }
+}

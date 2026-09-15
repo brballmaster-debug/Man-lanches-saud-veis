@@ -1,0 +1,20 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+  
+  --color-mana-bg: #FDFBF7;
+  --color-mana-green: #5C8B3B;
+  --color-mana-green-dark: #4A7030;
+  --color-mana-gold: #C1A774;
+  --color-mana-text: #333333;
+  --color-mana-text-light: #666666;
+}
+
+body {
+  background-color: var(--color-mana-bg);
+  color: var(--color-mana-text);
+  font-family: var(--font-sans);
+}
