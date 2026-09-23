@@ -1,6 +1,6 @@
-
 {
   "hosting": {
+    "site": "mana-lanches",
     "public": "dist",
     "ignore": [
       "firebase.json",
