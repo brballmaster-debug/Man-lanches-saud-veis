@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Order, UserDocument, Product, InfoSection } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown } from 'lucide-react';
+import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData } from '../types';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check } from 'lucide-react';
 import Logo from './Logo';
 
 interface AdminDashboardProps {
@@ -11,7 +11,7 @@ interface AdminDashboardProps {
 }
 
 export default function AdminDashboard({ onClose, products }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'customers' | 'settings' | 'menu' | 'stock' | 'checkout'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'customers' | 'settings' | 'menu' | 'stock' | 'checkout' | 'care_guide'>('dashboard');
   
   const [orders, setOrders] = useState<Order[]>([]);
   const [users, setUsers] = useState<UserDocument[]>([]);
@@ -56,6 +56,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [promoMinAmount, setPromoMinAmount] = useState(100);
   const [promoIsActive, setPromoIsActive] = useState(false);
   const [savingPromo, setSavingPromo] = useState(false);
+
+  const [careGuideData, setCareGuideData] = useState<CareGuideData>(defaultCareGuideData);
+  const [savingCareGuide, setSavingCareGuide] = useState(false);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [stockSearchTerm, setStockSearchTerm] = useState('');
@@ -161,6 +164,21 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       }
     });
 
+    const unsubCareGuide = onSnapshot(doc(db, 'settings', 'care_guide'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as CareGuideData;
+        setCareGuideData({
+          ...defaultCareGuideData,
+          ...data,
+          items: data.items || defaultCareGuideData.items,
+          importantBullets: data.importantBullets || defaultCareGuideData.importantBullets,
+          manaWayPoints: data.manaWayPoints || defaultCareGuideData.manaWayPoints
+        });
+      } else {
+        setCareGuideData(defaultCareGuideData);
+      }
+    });
+
     return () => {
       unsubOrders();
       unsubUsers();
@@ -168,6 +186,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       unsubSpecial();
       unsubInfoBanner();
       unsubPromo();
+      unsubCareGuide();
     };
   }, []);
 
@@ -364,6 +383,62 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
     setInfoBannerSections(infoBannerSections.map(s => 
       s.id === id ? { ...s, [field]: value } : s
     ));
+  };
+
+  const saveCareGuide = async () => {
+    setSavingCareGuide(true);
+    try {
+      await setDoc(doc(db, 'settings', 'care_guide'), careGuideData, { merge: true });
+      showToast("Guia de Conservação & Preparo salvo com sucesso!");
+    } catch (error) {
+      console.error("Erro ao salvar Guia de Conservação:", error);
+      showToast("Erro ao salvar o Guia de Conservação.");
+    } finally {
+      setSavingCareGuide(false);
+    }
+  };
+
+  const handleAddGuideCard = () => {
+    const newCard: CareGuideItem = {
+      id: Date.now().toString(),
+      title: 'NOVO PRODUTO',
+      subtitle: 'Produto congelado',
+      storageType: 'Freezer.',
+      storageIcon: 'freezer',
+      prepareTitle: 'Preparo (direto do congelador):',
+      prepareIcon: 'flame',
+      airFryer: '180 °C por 6 a 8 minutos.',
+      oven: 'Pré-aquecer a 180 °C e assar por 10 a 12 minutos.',
+      notes: '',
+      flavors: '',
+      tip: ''
+    };
+    setCareGuideData(prev => ({
+      ...prev,
+      items: [...prev.items, newCard]
+    }));
+    showToast("Novo card adicionado ao Guia!");
+  };
+
+  const handleRemoveGuideCard = (id: string) => {
+    setCareGuideData(prev => ({
+      ...prev,
+      items: prev.items.filter(item => item.id !== id)
+    }));
+  };
+
+  const handleUpdateGuideCard = (id: string, field: keyof CareGuideItem, value: any) => {
+    setCareGuideData(prev => ({
+      ...prev,
+      items: prev.items.map(item => item.id === id ? { ...item, [field]: value } : item)
+    }));
+  };
+
+  const handleResetGuideToDefault = () => {
+    if (window.confirm("Deseja restaurar todos os cards e textos para o modelo original do encarte Maná?")) {
+      setCareGuideData(defaultCareGuideData);
+      showToast("Modelo padrão restaurado. Clique em Salvar para gravar.");
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -780,6 +855,15 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           >
             <Users size={18} />
             Clientes
+          </button>
+          <button
+            onClick={() => setActiveTab('care_guide')}
+            className={`py-4 px-6 font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'care_guide' ? 'border-mana-green text-mana-green' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            }`}
+          >
+            <BookOpen size={18} />
+            Guia de Preparo
           </button>
           <button
             onClick={() => setActiveTab('settings')}
@@ -2101,6 +2185,471 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                     >
                       <CheckCircle size={24} />
                       <span className="font-bold pr-2">Salvar Configurações</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'care_guide' && (
+                <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+                  {/* Topo da Aba */}
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="font-serif text-xl sm:text-2xl font-bold text-mana-green flex items-center gap-2">
+                        <BookOpen size={24} /> Guia Maná (Conservação & Preparo)
+                      </h3>
+                      <p className="text-xs sm:text-sm text-mana-text-light mt-1">
+                        Edite os cards dos produtos, orientações de air fryer/forno/freezer, avisos importantes e dados do encarte oficial.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleResetGuideToDefault}
+                        className="px-4 py-2 text-xs font-semibold text-mana-text-light hover:text-mana-text bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors flex items-center gap-1.5"
+                        title="Restaura os dados originais do encarte"
+                      >
+                        <RotateCcw size={14} />
+                        Restaurar Padrão
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={saveCareGuide}
+                        disabled={savingCareGuide}
+                        className="bg-mana-green hover:bg-mana-green-dark text-white px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md shadow-mana-green/20 flex items-center gap-2 disabled:opacity-50"
+                      >
+                        <CheckCircle size={18} />
+                        <span>{savingCareGuide ? 'Salvando...' : 'Salvar Guia'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Bloco 1: Textos do Cabeçalho e Introdução */}
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20 space-y-4">
+                    <h4 className="font-serif font-bold text-mana-green text-base border-b border-mana-gold/20 pb-2">
+                      Cabeçalho & Apresentação do Guia
+                    </h4>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-mana-text mb-1">Título do Guia</label>
+                        <input
+                          type="text"
+                          value={careGuideData.headerTitle}
+                          onChange={(e) => setCareGuideData(prev => ({ ...prev, headerTitle: e.target.value }))}
+                          placeholder="Ex: GUIA MANÁ"
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-mana-gold/30 focus:ring-2 focus:ring-mana-green bg-white"
+                        />
+                      </div>
+                      
+                      <div className="md:col-span-2">
+                        <label className="block text-xs font-bold text-mana-text mb-1">Subtítulo / Mensagem de Boas-Vindas</label>
+                        <textarea
+                          rows={2}
+                          value={careGuideData.headerSubtitle}
+                          onChange={(e) => setCareGuideData(prev => ({ ...prev, headerSubtitle: e.target.value }))}
+                          placeholder="Ex: Sabor e equilíbrio na sua rotina. Obrigada por escolher a Maná! ♥"
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-mana-gold/30 focus:ring-2 focus:ring-mana-green bg-white"
+                        />
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <label className="block text-xs font-bold text-mana-text mb-1">Frase Introdutória</label>
+                        <input
+                          type="text"
+                          value={careGuideData.introText}
+                          onChange={(e) => setCareGuideData(prev => ({ ...prev, introText: e.target.value }))}
+                          placeholder="Ex: Confira abaixo como conservar e preparar os seus lanchinhos."
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-mana-gold/30 focus:ring-2 focus:ring-mana-green bg-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bloco 2: Cards Editáveis de Produtos */}
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20 space-y-6">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-mana-gold/20 pb-4">
+                      <div>
+                        <h4 className="font-serif font-bold text-mana-green text-lg">
+                          Cards de Produtos ({careGuideData.items.length})
+                        </h4>
+                        <p className="text-xs text-mana-text-light">
+                          Cada card representa um lanche no encarte com suas regras de conservação e preparo.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={handleAddGuideCard}
+                        className="bg-mana-green hover:bg-mana-green-dark text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all self-start sm:self-auto"
+                      >
+                        <Plus size={16} />
+                        Adicionar Novo Card
+                      </button>
+                    </div>
+
+                    <div className="space-y-6">
+                      {careGuideData.items.map((item, index) => (
+                        <div 
+                          key={item.id}
+                          className="rounded-2xl border border-mana-gold/30 bg-[#FAF8F3] p-5 relative transition-all hover:border-mana-green/40 shadow-sm"
+                        >
+                          {/* Topo do Card de Produto */}
+                          <div className="flex items-center justify-between gap-3 pb-3 mb-4 border-b border-mana-gold/20">
+                            <div className="flex items-center gap-2">
+                              <span className="w-6 h-6 rounded-full bg-mana-green text-white text-xs font-bold flex items-center justify-center">
+                                {index + 1}
+                              </span>
+                              <span className="font-serif font-bold text-mana-green text-base">
+                                {item.title || 'Produto sem título'}
+                              </span>
+                              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-mana-gold/15 text-mana-gold">
+                                {item.subtitle || 'Subtítulo'}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveGuideCard(item.id)}
+                              className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
+                              title="Excluir este card"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+
+                          {/* Campos do Card */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                            <div>
+                              <label className="block font-bold text-mana-text mb-1">Título do Produto</label>
+                              <input
+                                type="text"
+                                value={item.title}
+                                onChange={(e) => handleUpdateGuideCard(item.id, 'title', e.target.value)}
+                                placeholder="Ex: MINI PIZZAS"
+                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white font-semibold"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block font-bold text-mana-text mb-1">Subtítulo do Produto</label>
+                              <input
+                                type="text"
+                                value={item.subtitle}
+                                onChange={(e) => handleUpdateGuideCard(item.id, 'subtitle', e.target.value)}
+                                placeholder="Ex: Produto congelado ou Produto fresco"
+                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block font-bold text-mana-text mb-1">Ícone de Conservação</label>
+                              <select
+                                value={item.storageIcon || 'freezer'}
+                                onChange={(e) => handleUpdateGuideCard(item.id, 'storageIcon', e.target.value)}
+                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                              >
+                                <option value="freezer">Floco de Neve (Freezer)</option>
+                                <option value="thermometer">Termômetro (Local Fresco)</option>
+                              </select>
+                            </div>
+
+                            <div className="sm:col-span-2 lg:col-span-3">
+                              <label className="block font-bold text-mana-text mb-1">Instrução de Conservar</label>
+                              <input
+                                type="text"
+                                value={item.storageType}
+                                onChange={(e) => handleUpdateGuideCard(item.id, 'storageType', e.target.value)}
+                                placeholder="Ex: Freezer. ou Mantenha na embalagem original bem fechada..."
+                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                              />
+                            </div>
+
+                            <div className="sm:col-span-2 lg:col-span-3 pt-2">
+                              <label className="inline-flex items-center gap-2 cursor-pointer font-bold text-mana-green">
+                                <input
+                                  type="checkbox"
+                                  checked={item.readyToEat || false}
+                                  onChange={(e) => handleUpdateGuideCard(item.id, 'readyToEat', e.target.checked)}
+                                  className="rounded text-mana-green focus:ring-mana-green w-4 h-4"
+                                />
+                                <span>Produto pronto para consumo imediato (Ex: Bolachinhas, dispensando aquecimento)</span>
+                              </label>
+                            </div>
+
+                            {!item.readyToEat && (
+                              <>
+                                <div>
+                                  <label className="block font-bold text-mana-text mb-1">Título da Seção de Preparo</label>
+                                  <input
+                                    type="text"
+                                    value={item.prepareTitle || ''}
+                                    onChange={(e) => handleUpdateGuideCard(item.id, 'prepareTitle', e.target.value)}
+                                    placeholder="Ex: Preparo (direto do congelador): ou Para consumir:"
+                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block font-bold text-mana-text mb-1">Ícone de Preparo</label>
+                                  <select
+                                    value={item.prepareIcon || 'flame'}
+                                    onChange={(e) => handleUpdateGuideCard(item.id, 'prepareIcon', e.target.value)}
+                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                  >
+                                    <option value="flame">Chama / Fogo</option>
+                                    <option value="utensils">Talheres (Para consumir)</option>
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <label className="block font-bold text-mana-text mb-1">Air Fryer (Tempo/Graus)</label>
+                                  <input
+                                    type="text"
+                                    value={item.airFryer || ''}
+                                    onChange={(e) => handleUpdateGuideCard(item.id, 'airFryer', e.target.value)}
+                                    placeholder="Ex: 180 °C por 6 a 8 minutos."
+                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block font-bold text-mana-text mb-1">Forno Convencional (Tempo/Graus)</label>
+                                  <input
+                                    type="text"
+                                    value={item.oven || ''}
+                                    onChange={(e) => handleUpdateGuideCard(item.id, 'oven', e.target.value)}
+                                    placeholder="Ex: Pré-aquecer a 180 °C e assar por 10 a 12 minutos."
+                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block font-bold text-mana-text mb-1">Descongelamento na Geladeira</label>
+                                  <input
+                                    type="text"
+                                    value={item.thawRefrigerator || ''}
+                                    onChange={(e) => handleUpdateGuideCard(item.id, 'thawRefrigerator', e.target.value)}
+                                    placeholder="Ex: Retire da embalagem e deixe na geladeira por algumas horas..."
+                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                  />
+                                </div>
+
+                                <div>
+                                  <label className="block font-bold text-mana-text mb-1">Micro-ondas</label>
+                                  <input
+                                    type="text"
+                                    value={item.microwave || ''}
+                                    onChange={(e) => handleUpdateGuideCard(item.id, 'microwave', e.target.value)}
+                                    placeholder="Ex: Retire da embalagem e aqueça por 30 a 40 segundos..."
+                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                  />
+                                </div>
+
+                                <div className="sm:col-span-2 lg:col-span-3">
+                                  <label className="block font-bold text-mana-text mb-1">Observações de Preparo (Ex: Ponto do queijo ou da massa)</label>
+                                  <input
+                                    type="text"
+                                    value={item.notes || ''}
+                                    onChange={(e) => handleUpdateGuideCard(item.id, 'notes', e.target.value)}
+                                    placeholder="Ex: (O tempo pode variar de acordo com o aparelho. Estarão prontas quando o queijo derreter...)"
+                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                  />
+                                </div>
+
+                                <div className="sm:col-span-2 lg:col-span-3">
+                                  <label className="block font-bold text-amber-800 mb-1">Aviso de Evitar Micro-ondas (Opcional)</label>
+                                  <input
+                                    type="text"
+                                    value={item.avoidMicrowaveNotice || ''}
+                                    onChange={(e) => handleUpdateGuideCard(item.id, 'avoidMicrowaveNotice', e.target.value)}
+                                    placeholder="Ex: Dica: evite o micro-ondas para manter a textura perfeita e a massa no ponto."
+                                    className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-amber-50/50"
+                                  />
+                                </div>
+                              </>
+                            )}
+
+                            <div>
+                              <label className="block font-bold text-mana-text mb-1">Sabores (Exibido na tarja cinza)</label>
+                              <input
+                                type="text"
+                                value={item.flavors || ''}
+                                onChange={(e) => handleUpdateGuideCard(item.id, 'flavors', e.target.value)}
+                                placeholder="Ex: Sabores: queijo com tomate | frango com queijo"
+                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                              />
+                            </div>
+
+                            <div className="sm:col-span-2">
+                              <label className="block font-bold text-mana-text mb-1">Dica de Consumo (Exibido com ícone de lâmpada)</label>
+                              <input
+                                type="text"
+                                value={item.tip || ''}
+                                onChange={(e) => handleUpdateGuideCard(item.id, 'tip', e.target.value)}
+                                placeholder="Ex: Dica: consuma ainda morno para uma experiência mais saborosa!"
+                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Bloco 3: Seções Finais do Encarte */}
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20 space-y-6">
+                    <h4 className="font-serif font-bold text-mana-green text-base border-b border-mana-gold/20 pb-2">
+                      Cards Inferiores & Rodapé do Encarte
+                    </h4>
+
+                    {/* Card 1: Importante */}
+                    <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs uppercase text-mana-text tracking-wide flex items-center gap-1.5">
+                          <AlertCircle size={16} className="text-mana-gold" />
+                          Tópicos de "IMPORTANTE"
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCareGuideData(prev => ({ ...prev, importantBullets: [...prev.importantBullets, 'Novo aviso importante...'] }))}
+                          className="text-xs text-mana-green hover:underline font-bold"
+                        >
+                          + Adicionar Tópico
+                        </button>
+                      </div>
+
+                      {careGuideData.importantBullets.map((bullet, bIdx) => (
+                        <div key={bIdx} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={bullet}
+                            onChange={(e) => {
+                              const newBullets = [...careGuideData.importantBullets];
+                              newBullets[bIdx] = e.target.value;
+                              setCareGuideData(prev => ({ ...prev, importantBullets: newBullets }));
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-mana-gold/30 bg-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newBullets = careGuideData.importantBullets.filter((_, i) => i !== bIdx);
+                              setCareGuideData(prev => ({ ...prev, importantBullets: newBullets }));
+                            }}
+                            className="text-red-500 hover:text-red-700 p-1"
+                            title="Remover"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Card 2: O Jeito Maná */}
+                    <div className="p-4 rounded-xl bg-emerald-50/50 border border-emerald-100 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs uppercase text-mana-green tracking-wide flex items-center gap-1.5">
+                          <Check size={16} className="text-mana-green" />
+                          Tópicos de "O JEITO MANÁ"
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setCareGuideData(prev => ({ ...prev, manaWayPoints: [...prev.manaWayPoints, 'Novo ponto forte Maná...'] }))}
+                          className="text-xs text-mana-green hover:underline font-bold"
+                        >
+                          + Adicionar Tópico
+                        </button>
+                      </div>
+
+                      {careGuideData.manaWayPoints.map((point, pIdx) => (
+                        <div key={pIdx} className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={point}
+                            onChange={(e) => {
+                              const newPoints = [...careGuideData.manaWayPoints];
+                              newPoints[pIdx] = e.target.value;
+                              setCareGuideData(prev => ({ ...prev, manaWayPoints: newPoints }));
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs rounded-lg border border-mana-gold/30 bg-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const newPoints = careGuideData.manaWayPoints.filter((_, i) => i !== pIdx);
+                              setCareGuideData(prev => ({ ...prev, manaWayPoints: newPoints }));
+                            }}
+                            className="text-red-500 hover:text-red-700 p-1"
+                            title="Remover"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      ))}
+
+                      <div>
+                        <label className="block text-xs font-bold text-mana-green mb-1">Frase Afetuosa em Destaque</label>
+                        <input
+                          type="text"
+                          value={careGuideData.manaWayNote}
+                          onChange={(e) => setCareGuideData(prev => ({ ...prev, manaWayNote: e.target.value }))}
+                          placeholder="Ex: Feito com cuidado, para você. ♥"
+                          className="w-full px-3 py-1.5 text-xs rounded-lg border border-mana-gold/30 bg-white font-medium italic"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Card 3: Instagram e Rodapé */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-mana-text mb-1">Perfil do Instagram (Card 3)</label>
+                        <input
+                          type="text"
+                          value={careGuideData.instagramHandle}
+                          onChange={(e) => setCareGuideData(prev => ({ ...prev, instagramHandle: e.target.value }))}
+                          placeholder="Ex: @manalanches"
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-mana-gold/30 bg-white"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-mana-text mb-1">Frase Final do Rodapé (com folhinhas)</label>
+                        <input
+                          type="text"
+                          value={careGuideData.footerThankYou}
+                          onChange={(e) => setCareGuideData(prev => ({ ...prev, footerThankYou: e.target.value }))}
+                          placeholder="Ex: Obrigada por fazer parte deste começo! ♥"
+                          className="w-full px-3 py-2 text-xs rounded-lg border border-mana-gold/30 bg-white font-serif italic"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-4 border-t border-mana-gold/20">
+                      <button
+                        type="button"
+                        onClick={saveCareGuide}
+                        disabled={savingCareGuide}
+                        className="bg-mana-green hover:bg-mana-green-dark text-white px-6 py-2.5 rounded-xl font-bold text-sm transition-all shadow-md flex items-center gap-2"
+                      >
+                        <CheckCircle size={18} />
+                        <span>{savingCareGuide ? 'Gravando...' : 'Salvar Alterações do Guia'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Floating Save Button para care_guide */}
+                  <div className="fixed bottom-8 right-8 z-50">
+                    <button
+                      onClick={saveCareGuide}
+                      disabled={savingCareGuide}
+                      className="bg-mana-green hover:bg-mana-green-dark text-white p-4 rounded-full shadow-2xl flex items-center gap-2 transition-all transform hover:scale-105 disabled:opacity-50"
+                      title="Salvar alterações do Guia"
+                    >
+                      <CheckCircle size={24} />
+                      <span className="font-bold pr-2">{savingCareGuide ? 'Salvando...' : 'Salvar Guia'}</span>
                     </button>
                   </div>
                 </div>

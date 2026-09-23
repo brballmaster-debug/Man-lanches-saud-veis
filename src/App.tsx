@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard } from 'lucide-react';
+import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard, BookOpen } from 'lucide-react';
 import { products as defaultProducts } from './data';
 import { Product, CartItem, InfoSection, Promotion } from './types';
 import { auth, db, signInWithGoogle, logOut, signInAnonymously } from './firebase';
@@ -13,6 +13,7 @@ import { doc, onSnapshot, runTransaction, collection, serverTimestamp, getDoc, s
 import OrderHistory from './components/OrderHistory';
 import AdminDashboard from './components/AdminDashboard';
 import AuthModal from './components/AuthModal';
+import CareGuide from './components/CareGuide';
 import Logo from './components/Logo';
 
 const DELIVERY_SLOTS = [
@@ -68,6 +69,7 @@ export default function App() {
   const [showOrderHistory, setShowOrderHistory] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showCareGuide, setShowCareGuide] = useState(false);
   const [slotCounts, setSlotCounts] = useState<Record<string, number>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
@@ -673,6 +675,16 @@ export default function App() {
                 <span className="hidden sm:block">Entrar</span>
               </button>
             )}
+
+            {/* Atalho no Header para o Guia */}
+            <button 
+              onClick={() => setShowCareGuide(true)}
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-medium text-mana-green hover:text-mana-green-dark bg-mana-green/10 hover:bg-mana-green/20 px-2.5 sm:px-3 py-1.5 rounded-xl transition-all border border-mana-green/20"
+              title="Guia de Conservação e Preparo"
+            >
+              <BookOpen size={16} />
+              <span className="hidden md:inline">Guia de Conservação</span>
+            </button>
             
             <button 
               onClick={() => setIsCartOpen(true)}
@@ -691,6 +703,36 @@ export default function App() {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8">
+        {/* Botão de Destaque: Guia de Conservação e Preparo */}
+        <div className="mb-6">
+          <button
+            onClick={() => setShowCareGuide(true)}
+            className="w-full bg-gradient-to-r from-emerald-50/90 via-white to-amber-50/80 hover:from-emerald-100 hover:via-white hover:to-amber-100 border border-mana-gold/30 hover:border-mana-green/50 p-4 sm:p-5 rounded-2xl flex items-center justify-between gap-4 transition-all duration-300 group shadow-sm hover:shadow-md text-left"
+          >
+            <div className="flex items-center gap-3.5 sm:gap-4">
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-mana-green text-white flex items-center justify-center shadow-md shadow-mana-green/20 group-hover:scale-105 transition-transform shrink-0">
+                <BookOpen size={22} />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="font-serif font-bold text-mana-green text-base sm:text-lg group-hover:text-mana-green-dark">
+                    Guia de Conservação e Preparo
+                  </h3>
+                  <span className="text-[10px] uppercase font-bold tracking-wider bg-mana-gold/20 text-mana-gold px-2 py-0.5 rounded-full border border-mana-gold/30">
+                    Dicas
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-mana-text-light mt-0.5 line-clamp-1 sm:line-clamp-none">
+                  Aprenda as melhores formas de armazenar, aquecer e manter a frescura dos seus lanches saudáveis.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-1 text-mana-green font-bold text-xs sm:text-sm shrink-0 bg-mana-green/10 group-hover:bg-mana-green group-hover:text-white px-3 sm:px-4 py-2 rounded-xl transition-all">
+              <span className="hidden xs:inline">Acessar</span>
+              <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+            </div>
+          </button>
+        </div>
         {infoBannerData.title && infoBannerData.sections?.length > 0 && (
           <div className="bg-mana-gold/10 border border-mana-gold/30 rounded-2xl p-6 mb-8">
             <h3 className="font-serif text-xl font-bold text-mana-green mb-4 flex items-center gap-2">
@@ -1439,10 +1481,11 @@ export default function App() {
           </div>
         </div>
       )}
-      {/* Modals */}
+      {/* Modals & Pages */}
       {showOrderHistory && <OrderHistory onClose={() => setShowOrderHistory(false)} />}
       {showAdminDashboard && <AdminDashboard onClose={() => setShowAdminDashboard(false)} products={dbProducts} />}
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+      {showCareGuide && <CareGuide onClose={() => setShowCareGuide(false)} logoUrl={logoUrl} homeTitle={homeTitle} />}
 
       {/* Success Modal */}
       {showSuccessModal && (

@@ -68,3 +68,102 @@ export interface Promotion {
   percentage: number;
   minAmount: number;
 }
+
+export interface CareGuideItem {
+  id: string;
+  title: string;
+  subtitle: string;
+  storageType: string;
+  storageIcon?: 'freezer' | 'thermometer';
+  prepareTitle?: string;
+  prepareIcon?: 'flame' | 'utensils';
+  airFryer?: string;
+  oven?: string;
+  thawRefrigerator?: string;
+  microwave?: string;
+  readyToEat?: boolean;
+  notes?: string;
+  flavors?: string;
+  tip?: string;
+  avoidMicrowaveNotice?: string;
+}
+
+export interface CareGuideData {
+  headerTitle: string;
+  headerSubtitle: string;
+  introText: string;
+  items: CareGuideItem[];
+  importantBullets: string[];
+  manaWayPoints: string[];
+  manaWayNote: string;
+  routineText: string;
+  instagramHandle: string;
+  footerThankYou: string;
+}
+
+export const defaultCareGuideData: CareGuideData = {
+  headerTitle: 'GUIA MANÁ',
+  headerSubtitle: 'Sabor e equilíbrio na sua rotina.\nObrigada por escolher a Maná! ♥',
+  introText: 'Confira abaixo como conservar e preparar os seus lanchinhos.',
+  items: [
+    {
+      id: '1',
+      title: 'MINI PIZZAS',
+      subtitle: 'Produto congelado',
+      storageType: 'Freezer.',
+      storageIcon: 'freezer',
+      prepareTitle: 'Preparo (direto do congelador, não descongele):',
+      prepareIcon: 'flame',
+      airFryer: '180 °C por 6 a 8 minutos.',
+      oven: 'Pré-aquecer a 180 °C e assar por 10 a 12 minutos.',
+      notes: '(O tempo pode variar de acordo com o aparelho. Estarão prontas quando o queijo derreter e a massa estiver dourada).',
+      flavors: 'Sabores: queijo com tomate | frango com queijo'
+    },
+    {
+      id: '2',
+      title: 'BOLINHO DE CACAU',
+      subtitle: 'Produto congelado',
+      storageType: 'Freezer.',
+      storageIcon: 'freezer',
+      prepareTitle: 'Para consumir:',
+      prepareIcon: 'utensils',
+      thawRefrigerator: 'Retire da embalagem e deixe na geladeira por algumas horas (ou na noite anterior).',
+      microwave: 'Retire da embalagem e aqueça por 30 a 40 segundos (pode variar conforme o equipamento).',
+      tip: 'Dica: consuma ainda morno para uma experiência mais saborosa!'
+    },
+    {
+      id: '3',
+      title: 'PÃOZINHO DE BATATA COM FRANGO',
+      subtitle: 'Produto congelado',
+      storageType: 'Freezer.',
+      storageIcon: 'freezer',
+      prepareTitle: 'Preparo (direto do congelador):',
+      prepareIcon: 'flame',
+      airFryer: '160–180 °C (verifique a partir de 8 minutos).',
+      oven: 'Pré-aquecer a 180 °C e verifique a partir de 10 minutos.',
+      avoidMicrowaveNotice: 'Dica: evite o micro-ondas para manter a textura perfeita e a massa no ponto.'
+    },
+    {
+      id: '4',
+      title: 'BOLACHINHA DE CACAU',
+      subtitle: 'Produto fresco',
+      storageType: 'Mantenha na embalagem original bem fechada, num local fresco e ao abrigo da luz.',
+      storageIcon: 'thermometer',
+      readyToEat: true
+    }
+  ],
+  importantBullets: [
+    'Não recongele produtos que já foram descongelados.',
+    'Os tempos de preparo são sugestões e podem variar conforme a potência do seu equipamento.',
+    'Para conferir a lista completa de ingredientes de cada produto, consulte o nosso catálogo.'
+  ],
+  manaWayPoints: [
+    'Sem adição de açúcar',
+    'Receitas pensadas para mais equilíbrio',
+    'Produção artesanal'
+  ],
+  manaWayNote: 'Feito com cuidado, para você. ♥',
+  routineText: 'Sabor e equilíbrio na sua rotina.',
+  instagramHandle: '@manalanches',
+  footerThankYou: 'Obrigada por fazer parte deste começo! ♥'
+};
