@@ -112,6 +112,8 @@ export const CareGuide: React.FC<CareGuideProps> = ({
           manaWayPoints: remoteData.manaWayPoints || defaultCareGuideData.manaWayPoints
         });
       }
+    }, (error) => {
+      console.warn("Firestore [settings/care_guide] offline/reconnecting:", error.message);
     });
 
     return () => unsub();

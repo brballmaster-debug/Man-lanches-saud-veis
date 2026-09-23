@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye } from 'lucide-react';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, MoreHorizontal, ChevronDown, Smartphone } from 'lucide-react';
 import Logo from './Logo';
 
 interface AdminDashboardProps {
@@ -10,8 +10,110 @@ interface AdminDashboardProps {
   products: Product[];
 }
 
+const withTimeout = async <T,>(promise: Promise<T>, timeoutMs = 7000, errorMsg = 'Tempo limite excedido ao salvar.'): Promise<T> => {
+  let timer: any;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(errorMsg)), timeoutMs);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const compressImage = (
+  file: File, 
+  maxWidth: number = 800, 
+  maxHeight: number = 800, 
+  quality: number = 0.75,
+  outputMime?: 'image/jpeg' | 'image/png' | 'image/webp'
+): Promise<{ base64: string; sizeKb: number }> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        let { width, height } = img;
+
+        // Mantém a proporção redimensionando se ultrapassar o limite
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return reject(new Error('Erro ao obter contexto do canvas'));
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+
+        // Renderiza com interpolação suave
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const targetMime = outputMime || (file.type === 'image/png' ? 'image/png' : 'image/jpeg');
+
+        // Exporta como imagem otimizada
+        const compressedBase64 = canvas.toDataURL(targetMime, quality);
+        const base64Data = compressedBase64.split(',')[1] || compressedBase64;
+        const approxSizeKb = Math.round((base64Data.length * 3) / 4 / 1024);
+
+        resolve({ base64: compressedBase64, sizeKb: approxSizeKb });
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+};
+
+const getImageSizeKb = (urlOrBase64?: string): number | null => {
+  if (!urlOrBase64 || !urlOrBase64.startsWith('data:')) return null;
+  const base64Data = urlOrBase64.split(',')[1] || urlOrBase64;
+  return Math.round((base64Data.length * 3) / 4 / 1024);
+};
+
+const triggerHaptic = (pattern: 'light' | 'medium' | 'success' | 'warning' = 'light'): boolean => {
+  if (typeof window !== 'undefined' && 'vibrate' in navigator) {
+    try {
+      let res = false;
+      switch (pattern) {
+        case 'light':
+          res = navigator.vibrate(35); // Toque rápido e sutil
+          break;
+        case 'medium':
+          res = navigator.vibrate(60); // Toque mais firme para ações de fluxo
+          break;
+        case 'success':
+          res = navigator.vibrate([40, 60, 40]); // Pulso duplo curto para salvamentos
+          break;
+        case 'warning':
+          res = navigator.vibrate([70, 50, 90]); // Padrão de alerta para exclusões
+          break;
+      }
+      return res;
+    } catch (err) {
+      // Ignora silenciosamente caso o dispositivo/navegador bloqueie a API
+      return false;
+    }
+  }
+  return false;
+};
+
 export default function AdminDashboard({ onClose, products }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'customers' | 'settings' | 'menu' | 'stock' | 'checkout' | 'care_guide'>('dashboard');
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   
   const [orders, setOrders] = useState<Order[]>([]);
   const [users, setUsers] = useState<UserDocument[]>([]);
@@ -61,7 +163,20 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [savingPromo, setSavingPromo] = useState(false);
 
   const [careGuideData, setCareGuideData] = useState<CareGuideData>(defaultCareGuideData);
+  const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
+  const [guideCardToDelete, setGuideCardToDelete] = useState<CareGuideItem | null>(null);
   const [savingCareGuide, setSavingCareGuide] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  
+  // Estados de Compressão de Imagens via Canvas
+  const [isCompressingProductImage, setIsCompressingProductImage] = useState(false);
+  const [productImageSizeKb, setProductImageSizeKb] = useState<number | null>(null);
+
+  const [isCompressingSpecialImage, setIsCompressingSpecialImage] = useState(false);
+  const [specialImageSizeKb, setSpecialImageSizeKb] = useState<number | null>(null);
+
+  const [isCompressingLogo, setIsCompressingLogo] = useState(false);
+  const [logoImageSizeKb, setLogoImageSizeKb] = useState<number | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [stockSearchTerm, setStockSearchTerm] = useState('');
@@ -69,10 +184,47 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [userSortField, setUserSortField] = useState<'orders' | 'name' | 'date'>('date');
   const [userSortDirection, setUserSortDirection] = useState<'asc' | 'desc'>('desc');
   const [isUpdatingRole, setIsUpdatingRole] = useState<string | null>(null);
+  const [updatingOrderId, setUpdatingOrderId] = useState<string | null>(null);
+  const [editingStatusOrderId, setEditingStatusOrderId] = useState<string | null>(null);
 
   const showToast = (message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(''), 3000);
+  };
+
+  const renderStatusBadge = (status: Order['status']) => {
+    switch (status) {
+      case 'pending':
+        return (
+          <span className="inline-flex items-center gap-1.5 bg-amber-100 text-amber-800 border border-amber-300 font-semibold px-2.5 py-1 rounded-full text-xs shrink-0 shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+            Pendente
+          </span>
+        );
+      case 'confirmed':
+        return (
+          <span className="inline-flex items-center gap-1.5 bg-blue-100 text-blue-800 border border-blue-300 font-semibold px-2.5 py-1 rounded-full text-xs shrink-0 shadow-2xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
+            Confirmado
+          </span>
+        );
+      case 'delivered':
+        return (
+          <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 border border-emerald-300 font-semibold px-2.5 py-1 rounded-full text-xs shrink-0 shadow-2xs">
+            <Check size={12} className="stroke-[3]" />
+            Entregue
+          </span>
+        );
+      case 'cancelled':
+        return (
+          <span className="inline-flex items-center gap-1 bg-red-100 text-red-700 border border-red-200 font-semibold px-2.5 py-1 rounded-full text-xs shrink-0 shadow-2xs">
+            <X size={12} className="stroke-[3]" />
+            Cancelado
+          </span>
+        );
+      default:
+        return null;
+    }
   };
 
   useEffect(() => {
@@ -84,6 +236,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       })) as Order[];
       setOrders(fetchedOrders);
       setLoading(false);
+    }, (error) => {
+      console.warn("Firestore [orders] offline/reconnecting:", error.message);
+      setLoading(false);
     });
 
     const qUsers = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
@@ -93,6 +248,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         ...doc.data()
       })) as UserDocument[];
       setUsers(fetchedUsers);
+    }, (error) => {
+      console.warn("Firestore [users] offline/reconnecting:", error.message);
     });
 
     const unsubStore = onSnapshot(doc(db, 'settings', 'store'), (docSnap) => {
@@ -122,6 +279,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setLateSlotsBlocked(false);
         setDeliverySlotsEnabled(true);
       }
+    }, (error) => {
+      console.warn("Firestore [settings/store] offline/reconnecting:", error.message);
     });
 
     const unsubSpecial = onSnapshot(doc(db, 'settings', 'special'), (docSnap) => {
@@ -133,6 +292,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setSpecialImageUrl(data.imageUrl || '');
         setSpecialIsActive(data.isActive || false);
       }
+    }, (error) => {
+      console.warn("Firestore [settings/special] offline/reconnecting:", error.message);
     });
 
     const unsubInfoBanner = onSnapshot(doc(db, 'settings', 'info_banner'), (docSnap) => {
@@ -157,6 +318,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           }
         ]);
       }
+    }, (error) => {
+      console.warn("Firestore [settings/info_banner] offline/reconnecting:", error.message);
     });
 
     const unsubPromo = onSnapshot(doc(db, 'settings', 'promotion'), (docSnap) => {
@@ -167,6 +330,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setPromoMinAmount(data.minAmount || 100);
         setPromoIsActive(data.isActive || false);
       }
+    }, (error) => {
+      console.warn("Firestore [settings/promotion] offline/reconnecting:", error.message);
     });
 
     const unsubCareGuide = onSnapshot(doc(db, 'settings', 'care_guide'), (docSnap) => {
@@ -182,6 +347,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       } else {
         setCareGuideData(defaultCareGuideData);
       }
+    }, (error) => {
+      console.warn("Firestore [settings/care_guide] offline/reconnecting:", error.message);
     });
 
     return () => {
@@ -226,29 +393,40 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const saveWhatsappNumber = async () => {
+    if (savingSettings) return;
+    setSavingSettings(true);
     try {
-      await setDoc(doc(db, 'settings', 'store'), { 
-        whatsappNumber,
-        deadlineDay: deliveryDeadlineDay,
-        deadlineHour: deliveryDeadlineHour,
-        deliveryPickUpEnabled,
-        pickUpHours,
-        deliveryHours,
-        deliveryFee,
-        freeShippingThreshold,
-        homeTitle,
-        homeSubtitle,
-        logoUrl,
-        logoAspectRatio,
-        logoScale,
-        catalogTitle,
-        catalogSubtitle,
-        catalogBadge
-      }, { merge: true });
-      showToast("Configurações atualizadas com sucesso.");
-    } catch (error) {
+      const cleanData: Record<string, any> = { 
+        whatsappNumber: (whatsappNumber || '5535998579552').trim(),
+        deadlineDay: Number.isFinite(deliveryDeadlineDay) ? deliveryDeadlineDay : 4,
+        deadlineHour: Number.isFinite(deliveryDeadlineHour) ? deliveryDeadlineHour : 21,
+        deliveryPickUpEnabled: Boolean(deliveryPickUpEnabled),
+        pickUpHours: pickUpHours || '17:30 às 19:00',
+        deliveryHours: deliveryHours || '13:00 às 19:00',
+        deliveryFee: typeof deliveryFee === 'number' && !isNaN(deliveryFee) ? deliveryFee : 5.00,
+        freeShippingThreshold: typeof freeShippingThreshold === 'number' && !isNaN(freeShippingThreshold) ? freeShippingThreshold : 50.00,
+        homeTitle: homeTitle || 'Maná',
+        homeSubtitle: homeSubtitle || 'Lanches Saudáveis',
+        logoUrl: logoUrl || '',
+        logoAspectRatio: logoAspectRatio || '16:9',
+        logoScale: logoScale || 'lg',
+        catalogTitle: catalogTitle || 'Nosso Catálogo',
+        catalogSubtitle: catalogSubtitle || 'Escolha seus lanches e faça seu pedido com facilidade.',
+        catalogBadge: catalogBadge || 'Produção limitada'
+      };
+
+      await withTimeout(
+        setDoc(doc(db, 'settings', 'store'), cleanData, { merge: true }),
+        7000,
+        "Tempo limite ao salvar configurações. Tente novamente."
+      );
+      triggerHaptic('success');
+      showToast("Configurações atualizadas com sucesso!");
+    } catch (error: any) {
       console.error("Error saving settings:", error);
-      showToast("Erro ao salvar configurações.");
+      showToast(error?.message?.includes("Tempo limite") ? error.message : "Erro ao salvar configurações.");
+    } finally {
+      setSavingSettings(false);
     }
   };
 
@@ -267,16 +445,22 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const updateOrderStatus = async (orderId: string, status: Order['status']) => {
+    triggerHaptic('medium');
     try {
+      setUpdatingOrderId(orderId);
       await updateDoc(doc(db, 'orders', orderId), { status });
+      setEditingStatusOrderId(null);
       showToast("Status atualizado com sucesso.");
     } catch (error) {
       console.error("Error updating order:", error);
       showToast("Erro ao atualizar pedido.");
+    } finally {
+      setUpdatingOrderId(null);
     }
   };
 
   const clearDeliverySlots = async () => {
+    triggerHaptic('warning');
     try {
       const slotsSnapshot = await getDocs(collection(db, 'delivery_slots'));
       const deletePromises = slotsSnapshot.docs.map(d => deleteDoc(d.ref));
@@ -290,6 +474,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const clearAllOrders = async () => {
+    triggerHaptic('warning');
     try {
       const ordersSnapshot = await getDocs(collection(db, 'orders'));
       const deletePromises = ordersSnapshot.docs.map(d => deleteDoc(d.ref));
@@ -303,6 +488,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const clearAllCustomers = async () => {
+    triggerHaptic('warning');
     try {
       // Don't delete the main admin
       const usersSnapshot = await getDocs(collection(db, 'users'));
@@ -320,15 +506,20 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const saveSpecial = async () => {
+    if (savingSpecial) return;
     setSavingSpecial(true);
     try {
-      await setDoc(doc(db, 'settings', 'special'), {
-        title: specialTitle,
-        badgeText: specialBadgeText,
-        description: specialDescription,
-        imageUrl: specialImageUrl,
-        isActive: specialIsActive
-      });
+      await withTimeout(
+        setDoc(doc(db, 'settings', 'special'), {
+          title: specialTitle || '',
+          badgeText: specialBadgeText || '',
+          description: specialDescription || '',
+          imageUrl: specialImageUrl || '',
+          isActive: Boolean(specialIsActive)
+        }),
+        7000
+      );
+      triggerHaptic('success');
       showToast("Especial da semana atualizado!");
     } catch (error) {
       console.error("Error saving special:", error);
@@ -339,12 +530,17 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const saveInfoBanner = async () => {
+    if (savingInfoBanner) return;
     setSavingInfoBanner(true);
     try {
-      await setDoc(doc(db, 'settings', 'info_banner'), {
-        title: infoBannerTitle,
-        sections: infoBannerSections
-      });
+      await withTimeout(
+        setDoc(doc(db, 'settings', 'info_banner'), {
+          title: infoBannerTitle || '',
+          sections: infoBannerSections || []
+        }),
+        7000
+      );
+      triggerHaptic('success');
       showToast("Banner de informações atualizado!");
     } catch (error) {
       console.error("Error saving info banner:", error);
@@ -355,14 +551,19 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const savePromotion = async () => {
+    if (savingPromo) return;
     setSavingPromo(true);
     try {
-      await setDoc(doc(db, 'settings', 'promotion'), {
-        name: promoName,
-        percentage: promoPercentage,
-        minAmount: promoMinAmount,
-        isActive: promoIsActive
-      });
+      await withTimeout(
+        setDoc(doc(db, 'settings', 'promotion'), {
+          name: promoName || '',
+          percentage: promoPercentage || 0,
+          minAmount: promoMinAmount || 0,
+          isActive: Boolean(promoIsActive)
+        }),
+        7000
+      );
+      triggerHaptic('success');
       showToast("Promoção atualizada!");
     } catch (error) {
       console.error("Error saving promotion:", error);
@@ -393,21 +594,47 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const saveCareGuide = async () => {
+    if (savingCareGuide) return;
     setSavingCareGuide(true);
     try {
-      await setDoc(doc(db, 'settings', 'care_guide'), careGuideData, { merge: true });
+      await withTimeout(
+        setDoc(doc(db, 'settings', 'care_guide'), careGuideData, { merge: true }),
+        7000,
+        "Tempo limite ao salvar o guia. Tente novamente."
+      );
+      triggerHaptic('success');
       showToast("Guia de Conservação & Preparo salvo com sucesso!");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao salvar Guia de Conservação:", error);
-      showToast("Erro ao salvar o Guia de Conservação.");
+      showToast(error?.message?.includes("Tempo limite") ? error.message : "Erro ao salvar o Guia de Conservação.");
     } finally {
       setSavingCareGuide(false);
     }
   };
 
+  const toggleCardExpansion = (cardId: string) => {
+    setExpandedCards(prev => ({
+      ...prev,
+      [cardId]: !prev[cardId]
+    }));
+  };
+
+  const expandAllCards = () => {
+    const allExpanded: Record<string, boolean> = {};
+    careGuideData.items.forEach(item => {
+      allExpanded[item.id] = true;
+    });
+    setExpandedCards(allExpanded);
+  };
+
+  const collapseAllCards = () => {
+    setExpandedCards({});
+  };
+
   const handleAddGuideCard = () => {
+    const newId = Date.now().toString();
     const newCard: CareGuideItem = {
-      id: Date.now().toString(),
+      id: newId,
       title: 'NOVO PRODUTO',
       subtitle: 'Produto congelado',
       storageType: 'Freezer.',
@@ -424,6 +651,10 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       ...prev,
       items: [...prev.items, newCard]
     }));
+    setExpandedCards(prev => ({
+      ...prev,
+      [newId]: true
+    }));
     showToast("Novo card adicionado ao Guia!");
   };
 
@@ -432,6 +663,21 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       ...prev,
       items: prev.items.filter(item => item.id !== id)
     }));
+    setExpandedCards(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
+
+  const confirmRemoveGuideCard = () => {
+    if (!guideCardToDelete) return;
+    triggerHaptic('warning');
+    const cardId = guideCardToDelete.id;
+    const cardTitle = guideCardToDelete.title || 'Produto sem título';
+    handleRemoveGuideCard(cardId);
+    setGuideCardToDelete(null);
+    showToast(`Card "${cardTitle}" excluído! Lembre-se de salvar.`);
   };
 
   const handleUpdateGuideCard = (id: string, field: keyof CareGuideItem, value: any) => {
@@ -448,42 +694,26 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
     }
   };
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        
-        const MAX_DIMENSION = 800;
-        if (width > height && width > MAX_DIMENSION) {
-          height *= MAX_DIMENSION / width;
-          width = MAX_DIMENSION;
-        } else if (height > MAX_DIMENSION) {
-          width *= MAX_DIMENSION / height;
-          height = MAX_DIMENSION;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          setSpecialImageUrl(dataUrl);
-        }
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    setIsCompressingSpecialImage(true);
+    try {
+      const { base64, sizeKb } = await compressImage(file, 800, 800, 0.75, 'image/jpeg');
+      setSpecialImageUrl(base64);
+      setSpecialImageSizeKb(sizeKb);
+      showToast(`Banner otimizado com sucesso: ~${sizeKb} KB!`);
+    } catch (error) {
+      console.error("Erro na compressão do banner:", error);
+      showToast("Erro ao processar imagem.");
+    } finally {
+      setIsCompressingSpecialImage(false);
+      e.target.value = '';
+    }
   };
 
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -492,82 +722,53 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       const reader = new FileReader();
       reader.onload = (event) => {
         if (event.target?.result) {
-          setLogoUrl(event.target.result as string);
+          const res = event.target.result as string;
+          setLogoUrl(res);
+          setLogoImageSizeKb(getImageSizeKb(res));
           showToast("Logo vetorial (SVG) carregada com sucesso!");
         }
       };
       reader.readAsDataURL(file);
+      e.target.value = '';
       return;
     }
 
-    // Para PNG/WebP/JPEG, redimensiona se for muito grande e salva como PNG com transparência
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const MAX_DIMENSION = 600;
-        if (width > height && width > MAX_DIMENSION) {
-          height *= MAX_DIMENSION / width;
-          width = MAX_DIMENSION;
-        } else if (height > MAX_DIMENSION) {
-          width *= MAX_DIMENSION / height;
-          height = MAX_DIMENSION;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/png');
-          setLogoUrl(dataUrl);
-          showToast("Logo carregada com sucesso!");
-        }
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    setIsCompressingLogo(true);
+    try {
+      const targetMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+      const { base64, sizeKb } = await compressImage(file, 800, 800, 0.8, targetMime);
+      setLogoUrl(base64);
+      setLogoImageSizeKb(sizeKb);
+      showToast(`Logo otimizada com sucesso: ~${sizeKb} KB!`);
+    } catch (error) {
+      console.error("Erro na compressão da logo:", error);
+      showToast("Erro ao processar logo.");
+    } finally {
+      setIsCompressingLogo(false);
+      e.target.value = '';
+    }
   };
 
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [savingProduct, setSavingProduct] = useState(false);
 
-  const handleProductImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProductImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !editingProduct) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        
-        const MAX_DIMENSION = 800;
-        if (width > height && width > MAX_DIMENSION) {
-          height *= MAX_DIMENSION / width;
-          width = MAX_DIMENSION;
-        } else if (height > MAX_DIMENSION) {
-          width *= MAX_DIMENSION / height;
-          height = MAX_DIMENSION;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          setEditingProduct({ ...editingProduct, imageUrl: dataUrl });
-        }
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    setIsCompressingProductImage(true);
+    try {
+      const { base64, sizeKb } = await compressImage(file, 800, 800, 0.75, 'image/jpeg');
+      setEditingProduct(prev => prev ? { ...prev, imageUrl: base64 } : null);
+      setProductImageSizeKb(sizeKb);
+      showToast(`Foto do produto otimizada: ~${sizeKb} KB!`);
+    } catch (error) {
+      console.error("Erro na compressão da foto do produto:", error);
+      showToast("Erro ao processar imagem.");
+    } finally {
+      setIsCompressingProductImage(false);
+      e.target.value = '';
+    }
   };
 
   const saveProduct = async () => {
@@ -576,11 +777,13 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
     try {
       if (editingProduct.id) {
         await setDoc(doc(db, 'products', editingProduct.id), editingProduct);
+        triggerHaptic('success');
         showToast("Produto atualizado com sucesso!");
       } else {
         const newProductRef = doc(collection(db, 'products'));
         const newProduct = { ...editingProduct, id: newProductRef.id, isAvailable: true };
         await setDoc(newProductRef, newProduct);
+        triggerHaptic('success');
         showToast("Produto adicionado com sucesso!");
       }
       setEditingProduct(null);
@@ -601,7 +804,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
 
   const confirmDeleteProduct = async () => {
     if (!productToDelete) return;
-    
+    triggerHaptic('warning');
     setIsDeleting(true);
     try {
       await deleteDoc(doc(db, 'products', productToDelete.id));
@@ -626,6 +829,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       category: '',
       nutrition: ''
     });
+    setProductImageSizeKb(null);
   };
 
   const copyOrderToClipboard = (order: Order) => {
@@ -692,7 +896,11 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
     .filter(o => o.status === 'delivered')
     .reduce((acc, o) => acc + o.total, 0);
   
-  const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
+  const pendingOrdersCount = React.useMemo(() => {
+    return orders.filter(
+      (order) => order.status === 'Pendente' || order.status === 'pendente' || order.status === 'pending'
+    ).length;
+  }, [orders]);
   const confirmedOrdersCount = orders.filter(o => o.status === 'confirmed').length;
   
   const topProducts = React.useMemo(() => {
@@ -709,8 +917,10 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
     return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
   }, [orders]);
 
+  const isMoreActive = ['menu', 'checkout', 'customers', 'care_guide', 'settings'].includes(activeTab);
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-center items-center p-4 bg-black/50 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-[#FDFCF6] md:bg-black/50 md:backdrop-blur-sm">
       {toastMessage && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-full shadow-lg z-[60] animate-in fade-in slide-in-from-top-4">
           {toastMessage}
@@ -786,14 +996,14 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         </div>
       )}
 
-      <div className="w-full max-w-6xl bg-mana-bg h-[92vh] rounded-2xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-300">
+      <div className="w-full h-[100dvh] max-w-none m-0 rounded-none border-none shadow-none md:max-w-6xl md:h-[92vh] md:max-h-[92vh] md:rounded-2xl md:shadow-2xl md:border md:border-mana-gold/20 bg-mana-bg flex flex-col overflow-hidden animate-in fade-in duration-200 md:zoom-in-95">
         
         {/* Header */}
-        <div className="px-4 py-4 sm:px-6 sm:py-5 border-b border-mana-gold/20 flex items-center justify-between bg-white sticky top-0 z-10">
-          <div className="flex items-center gap-3">
-            <Logo customUrl={logoUrl} variant="icon" className="h-9 w-9 select-none" alt="Maná Lanches Saudáveis" />
-            <div>
-              <h2 className="font-serif text-xl sm:text-2xl font-bold text-mana-green leading-tight">
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-mana-gold/20 flex items-center justify-between bg-white/95 backdrop-blur-sm shrink-0 z-20 shadow-xs">
+          <div className="flex items-center gap-3 min-w-0">
+            <Logo customUrl={logoUrl} variant="icon" className="h-9 w-9 shrink-0 select-none" alt="Maná Lanches Saudáveis" />
+            <div className="min-w-0">
+              <h2 className="font-serif text-lg sm:text-2xl font-bold text-mana-green leading-tight truncate">
                 Painel Administrativo
               </h2>
               <p className="text-xs text-mana-text-light hidden sm:block">Maná Lanches Saudáveis</p>
@@ -801,18 +1011,19 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           </div>
           <button 
             onClick={onClose}
-            className="p-2 text-mana-text-light hover:text-mana-text hover:bg-mana-bg rounded-full transition-all duration-200"
+            aria-label="Fechar painel administrativo"
+            className="h-11 w-11 flex items-center justify-center p-2.5 text-mana-text-light hover:text-mana-text hover:bg-mana-bg active:bg-mana-gold/20 rounded-full transition-all duration-200 shrink-0"
           >
             <X size={24} />
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-mana-gold/20 bg-white px-4 sm:px-6 overflow-x-auto no-scrollbar sticky top-[65px] sm:top-[77px] z-10">
+        {/* Tabs Desktop */}
+        <div className="hidden md:flex border-b border-mana-gold/20 bg-white px-2 sm:px-6 overflow-x-auto no-scrollbar shrink-0 z-10 shadow-xs">
           <button
             onClick={() => setActiveTab('dashboard')}
-            className={`py-4 px-6 font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'dashboard' ? 'border-mana-green text-mana-green' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            className={`py-3 sm:py-4 px-3.5 sm:px-6 font-medium border-b-2 text-sm sm:text-base transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'dashboard' ? 'border-mana-green text-mana-green font-semibold' : 'border-transparent text-mana-text-light hover:text-mana-text'
             }`}
           >
             <ShoppingBag size={18} />
@@ -820,17 +1031,27 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           </button>
           <button
             onClick={() => setActiveTab('orders')}
-            className={`py-4 px-6 font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'orders' ? 'border-mana-green text-mana-green' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            className={`py-3 sm:py-4 px-3.5 sm:px-6 font-medium border-b-2 text-sm sm:text-base transition-colors flex items-center gap-2 whitespace-nowrap relative ${
+              activeTab === 'orders' ? 'border-mana-green text-mana-green font-semibold' : 'border-transparent text-mana-text-light hover:text-mana-text'
             }`}
           >
-            <Package size={18} />
-            Pedidos
+            <div className="relative inline-flex items-center">
+              <Package size={18} />
+            </div>
+            <span>Pedidos</span>
+            {pendingOrdersCount > 0 && (
+              <span
+                className="bg-red-600 text-white text-[11px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center shadow-sm animate-pulse tracking-tight"
+                title={`${pendingOrdersCount} pedido(s) pendente(s)`}
+              >
+                {pendingOrdersCount > 99 ? '99+' : pendingOrdersCount}
+              </span>
+            )}
           </button>
           <button
             onClick={() => setActiveTab('menu')}
-            className={`py-4 px-6 font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'menu' ? 'border-mana-green text-mana-green' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            className={`py-3 sm:py-4 px-3.5 sm:px-6 font-medium border-b-2 text-sm sm:text-base transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'menu' ? 'border-mana-green text-mana-green font-semibold' : 'border-transparent text-mana-text-light hover:text-mana-text'
             }`}
           >
             <Utensils size={18} />
@@ -838,8 +1059,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           </button>
           <button
             onClick={() => setActiveTab('stock')}
-            className={`py-4 px-6 font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'stock' ? 'border-mana-green text-mana-green' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            className={`py-3 sm:py-4 px-3.5 sm:px-6 font-medium border-b-2 text-sm sm:text-base transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'stock' ? 'border-mana-green text-mana-green font-semibold' : 'border-transparent text-mana-text-light hover:text-mana-text'
             }`}
           >
             <Archive size={18} />
@@ -847,8 +1068,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           </button>
           <button
             onClick={() => setActiveTab('checkout')}
-            className={`py-4 px-6 font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'checkout' ? 'border-mana-green text-mana-green' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            className={`py-3 sm:py-4 px-3.5 sm:px-6 font-medium border-b-2 text-sm sm:text-base transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'checkout' ? 'border-mana-green text-mana-green font-semibold' : 'border-transparent text-mana-text-light hover:text-mana-text'
             }`}
           >
             <ShoppingBag size={18} />
@@ -856,8 +1077,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           </button>
           <button
             onClick={() => setActiveTab('customers')}
-            className={`py-4 px-6 font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'customers' ? 'border-mana-green text-mana-green' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            className={`py-3 sm:py-4 px-3.5 sm:px-6 font-medium border-b-2 text-sm sm:text-base transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'customers' ? 'border-mana-green text-mana-green font-semibold' : 'border-transparent text-mana-text-light hover:text-mana-text'
             }`}
           >
             <Users size={18} />
@@ -865,8 +1086,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           </button>
           <button
             onClick={() => setActiveTab('care_guide')}
-            className={`py-4 px-6 font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'care_guide' ? 'border-mana-green text-mana-green' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            className={`py-3 sm:py-4 px-3.5 sm:px-6 font-medium border-b-2 text-sm sm:text-base transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'care_guide' ? 'border-mana-green text-mana-green font-semibold' : 'border-transparent text-mana-text-light hover:text-mana-text'
             }`}
           >
             <BookOpen size={18} />
@@ -874,8 +1095,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           </button>
           <button
             onClick={() => setActiveTab('settings')}
-            className={`py-4 px-6 font-medium border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
-              activeTab === 'settings' ? 'border-mana-green text-mana-green' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            className={`py-3 sm:py-4 px-3.5 sm:px-6 font-medium border-b-2 text-sm sm:text-base transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'settings' ? 'border-mana-green text-mana-green font-semibold' : 'border-transparent text-mana-text-light hover:text-mana-text'
             }`}
           >
             <Settings size={18} />
@@ -884,7 +1105,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-mana-bg">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-6 overscroll-contain bg-mana-bg">
           {loading ? (
             <div className="flex justify-center items-center h-64">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-mana-green"></div>
@@ -914,7 +1135,17 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                         <span className="text-mana-text-light font-medium">Total Pedidos</span>
                       </div>
                       <h4 className="text-2xl font-bold text-mana-text">{orders.length}</h4>
-                      <p className="text-xs text-mana-text-light mt-1">{pendingOrdersCount} pendentes / {confirmedOrdersCount} confirmados</p>
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                        {pendingOrdersCount > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200 animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-red-600"></span>
+                            {pendingOrdersCount} pendente{pendingOrdersCount > 1 ? 's' : ''}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-mana-text-light">0 pendentes</span>
+                        )}
+                        <span className="text-xs text-mana-text-light">/ {confirmedOrdersCount} confirmados</span>
+                      </div>
                     </div>
 
                     <div className="bg-white p-6 rounded-2xl border border-mana-gold/20 shadow-sm">
@@ -1065,23 +1296,28 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                             {groupedOrders[time].map((order, index) => (
                               <div key={order.id} className="bg-white rounded-xl p-5 shadow-sm border border-mana-gold/20 flex flex-col md:flex-row gap-6">
                                 <div className="flex-1">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <h3 className="font-bold text-lg text-mana-green flex items-center gap-2">
-                                      <span className="bg-mana-green text-white text-sm px-2 py-0.5 rounded-md">
-                                        Pedido #{index + 1}
+                                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h3 className="font-bold text-lg text-mana-green flex items-center gap-2">
+                                        <span className="bg-mana-green text-white text-sm px-2 py-0.5 rounded-md font-medium">
+                                          Pedido #{index + 1}
+                                        </span>
+                                        {order.customerName}
+                                      </h3>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      {renderStatusBadge(order.status)}
+                                      <span className="text-xs text-mana-text-light font-mono bg-gray-50 border border-gray-200 px-2 py-0.5 rounded" title="ID do Sistema">
+                                        ID: {order.id.slice(-6).toUpperCase()}
                                       </span>
-                                      {order.customerName}
-                                    </h3>
-                                    <span className="text-sm text-mana-text-light font-mono" title="ID do Sistema">
-                                      ID: {order.id.slice(-6).toUpperCase()}
-                                    </span>
-                                    <button 
-                                      onClick={() => copyOrderToClipboard(order)}
-                                      className="p-1.5 text-mana-gold hover:bg-mana-gold/10 rounded-lg transition-colors"
-                                      title="Copiar Resumo"
-                                    >
-                                      <Copy size={16} />
-                                    </button>
+                                      <button 
+                                        onClick={() => copyOrderToClipboard(order)}
+                                        className="p-1.5 text-mana-gold hover:bg-mana-gold/10 rounded-lg transition-colors"
+                                        title="Copiar Resumo"
+                                      >
+                                        <Copy size={16} />
+                                      </button>
+                                    </div>
                                   </div>
                                   <p className="text-sm text-mana-text-light mb-4">
                                     Data: {order.deliveryDate}
@@ -1102,23 +1338,147 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                   </div>
                                 </div>
                                 
-                                <div className="w-full md:w-48 flex flex-col gap-2 justify-center border-t md:border-t-0 md:border-l border-mana-gold/10 pt-4 md:pt-0 md:pl-6">
-                                  <p className="text-xs font-semibold text-mana-text-light uppercase tracking-wider mb-2">Status do Pedido</p>
-                                  <select
-                                    value={order.status}
-                                    onChange={(e) => updateOrderStatus(order.id, e.target.value as Order['status'])}
-                                    className={`w-full p-2 rounded-lg border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-mana-green
-                                      ${order.status === 'pending' ? 'bg-yellow-50 border-yellow-200 text-yellow-800' : ''}
-                                      ${order.status === 'confirmed' ? 'bg-blue-50 border-blue-200 text-blue-800' : ''}
-                                      ${order.status === 'delivered' ? 'bg-green-50 border-green-200 text-green-800' : ''}
-                                      ${order.status === 'cancelled' ? 'bg-red-50 border-red-200 text-red-800' : ''}
-                                    `}
-                                  >
-                                    <option value="pending">Pendente</option>
-                                    <option value="confirmed">Confirmado</option>
-                                    <option value="delivered">Entregue</option>
-                                    <option value="cancelled">Cancelado</option>
-                                  </select>
+                                <div className="w-full md:w-56 flex flex-col justify-center border-t md:border-t-0 md:border-l border-mana-gold/10 pt-4 md:pt-0 md:pl-6">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-semibold text-mana-text-light uppercase tracking-wider">Ações do Pedido</p>
+                                    <div className="md:hidden">
+                                      {renderStatusBadge(order.status)}
+                                    </div>
+                                  </div>
+
+                                  {/* Se estiver Pendente */}
+                                  {order.status === 'pending' && (
+                                    <div className="flex flex-col sm:flex-row md:flex-col gap-2 w-full">
+                                      <button
+                                        type="button"
+                                        onClick={() => updateOrderStatus(order.id, 'confirmed')}
+                                        disabled={updatingOrderId === order.id}
+                                        className="bg-[#2D5A27] hover:bg-[#23471f] text-white font-medium min-h-[44px] py-2.5 px-4 rounded-xl text-sm flex-1 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                                      >
+                                        {updatingOrderId === order.id ? (
+                                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <>
+                                            <CheckCircle size={18} />
+                                            <span>Confirmar Pedido</span>
+                                          </>
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => updateOrderStatus(order.id, 'cancelled')}
+                                        disabled={updatingOrderId === order.id}
+                                        className="text-red-600 hover:bg-red-50 min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 active:scale-95 transition-colors disabled:opacity-50 border border-transparent hover:border-red-200"
+                                      >
+                                        <XCircle size={15} />
+                                        <span>Cancelar</span>
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {/* Se estiver Confirmado */}
+                                  {order.status === 'confirmed' && (
+                                    <div className="flex flex-col sm:flex-row md:flex-col gap-2 w-full">
+                                      <button
+                                        type="button"
+                                        onClick={() => updateOrderStatus(order.id, 'delivered')}
+                                        disabled={updatingOrderId === order.id}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium min-h-[44px] py-2.5 px-4 rounded-xl text-sm flex-1 flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-transform disabled:opacity-50"
+                                      >
+                                        {updatingOrderId === order.id ? (
+                                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <>
+                                            <Check size={18} className="stroke-[3]" />
+                                            <span>Marcar como Entregue</span>
+                                          </>
+                                        )}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => updateOrderStatus(order.id, 'pending')}
+                                        disabled={updatingOrderId === order.id}
+                                        className="text-mana-text-light hover:text-mana-text hover:bg-gray-100 min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 active:scale-95 transition-colors disabled:opacity-50"
+                                        title="Voltar para Pendente"
+                                      >
+                                        <RotateCcw size={14} />
+                                        <span>Reverter p/ Pendente</span>
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {/* Se estiver Entregue ou Cancelado */}
+                                  {(order.status === 'delivered' || order.status === 'cancelled') && (
+                                    <div className="flex flex-col gap-2 w-full">
+                                      <div className="hidden md:flex items-center mb-1">
+                                        {renderStatusBadge(order.status)}
+                                      </div>
+                                      
+                                      {editingStatusOrderId === order.id ? (
+                                        <div className="p-3 bg-gray-50 rounded-xl border border-gray-200 space-y-2 animate-in fade-in duration-150">
+                                          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Retificar para:</p>
+                                          <div className="grid grid-cols-2 gap-1.5">
+                                            {order.status !== 'pending' && (
+                                              <button
+                                                type="button"
+                                                onClick={() => updateOrderStatus(order.id, 'pending')}
+                                                disabled={updatingOrderId === order.id}
+                                                className="min-h-[40px] py-2 px-2 bg-amber-50 hover:bg-amber-100 text-amber-800 text-xs font-medium rounded-lg border border-amber-200 transition-colors flex items-center justify-center"
+                                              >
+                                                Pendente
+                                              </button>
+                                            )}
+                                            {order.status !== 'confirmed' && (
+                                              <button
+                                                type="button"
+                                                onClick={() => updateOrderStatus(order.id, 'confirmed')}
+                                                disabled={updatingOrderId === order.id}
+                                                className="min-h-[40px] py-2 px-2 bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-medium rounded-lg border border-blue-200 transition-colors flex items-center justify-center"
+                                              >
+                                                Confirmado
+                                              </button>
+                                            )}
+                                            {order.status !== 'delivered' && (
+                                              <button
+                                                type="button"
+                                                onClick={() => updateOrderStatus(order.id, 'delivered')}
+                                                disabled={updatingOrderId === order.id}
+                                                className="min-h-[40px] py-2 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-medium rounded-lg border border-emerald-200 transition-colors flex items-center justify-center"
+                                              >
+                                                Entregue
+                                              </button>
+                                            )}
+                                            {order.status !== 'cancelled' && (
+                                              <button
+                                                type="button"
+                                                onClick={() => updateOrderStatus(order.id, 'cancelled')}
+                                                disabled={updatingOrderId === order.id}
+                                                className="min-h-[40px] py-2 px-2 bg-red-50 hover:bg-red-100 text-red-700 text-xs font-medium rounded-lg border border-red-200 transition-colors flex items-center justify-center"
+                                              >
+                                                Cancelar
+                                              </button>
+                                            )}
+                                          </div>
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingStatusOrderId(null)}
+                                            className="w-full text-center text-xs text-gray-500 hover:text-gray-700 py-1"
+                                          >
+                                            Fechar
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingStatusOrderId(order.id)}
+                                          className="min-h-[44px] text-mana-text-light hover:text-mana-green hover:bg-mana-bg active:bg-mana-gold/10 py-2.5 px-3 rounded-xl text-xs font-medium flex items-center justify-center gap-1.5 transition-colors border border-dashed border-gray-300 hover:border-mana-green"
+                                        >
+                                          <RotateCcw size={13} />
+                                          <span>Alterar status</span>
+                                        </button>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             ))}
@@ -1381,36 +1741,66 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                               type="file" 
                               accept="image/*"
                               onChange={handleProductImageUpload}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              disabled={isCompressingProductImage}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
                             />
                             <div className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 bg-mana-bg text-mana-text flex items-center justify-center gap-2 hover:bg-mana-gold/10 transition-colors">
                               <Upload size={18} />
-                              <span>Enviar do Computador</span>
+                              <span>{isCompressingProductImage ? 'Otimizando...' : 'Enviar do Computador'}</span>
                             </div>
                           </div>
                         </div>
                       </div>
 
                         {editingProduct.imageUrl && (
-                          <div className="mt-4 border border-mana-gold/20 rounded-lg overflow-hidden h-40 relative w-40">
-                            <img src={editingProduct.imageUrl} alt="Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/400x400?text=Imagem+Inv%C3%A1lida')} />
-                            <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">Preview</div>
+                          <div className="mt-4 flex flex-col gap-1.5">
+                            <div className="border border-mana-gold/20 rounded-lg overflow-hidden h-40 relative w-40 bg-gray-50 shadow-xs">
+                              <img src={editingProduct.imageUrl} alt="Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/400x400?text=Imagem+Inv%C3%A1lida')} />
+                              <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-xs text-white text-[10px] font-semibold px-2 py-0.5 rounded">Preview</div>
+                            </div>
+                            
+                            {/* Indicador Visual de Compressão e Tamanho Otimizado */}
+                            {isCompressingProductImage ? (
+                              <span className="text-xs font-medium text-mana-green bg-mana-green/10 border border-mana-green/20 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit animate-pulse">
+                                <div className="w-3 h-3 border-2 border-mana-green border-t-transparent rounded-full animate-spin" />
+                                Otimizando imagem no navegador...
+                              </span>
+                            ) : (productImageSizeKb ?? getImageSizeKb(editingProduct.imageUrl)) !== null ? (
+                              (productImageSizeKb ?? getImageSizeKb(editingProduct.imageUrl))! <= 300 ? (
+                                <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                  <CheckCircle size={13} className="text-emerald-600" />
+                                  Otimizada: ~{productImageSizeKb ?? getImageSizeKb(editingProduct.imageUrl)} KB (Pronta para salvar)
+                                </span>
+                              ) : (
+                                <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                  <AlertCircle size={13} className="text-amber-600" />
+                                  Tamanho: ~{productImageSizeKb ?? getImageSizeKb(editingProduct.imageUrl)} KB (Recomendado abaixo de 300 KB)
+                                </span>
+                              )
+                            ) : editingProduct.imageUrl.startsWith('http') ? (
+                              <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200/70 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                Link externo da web
+                              </span>
+                            ) : null}
                           </div>
                         )}
 
                         <div className="pt-4 border-t border-mana-gold/20 flex justify-end gap-3">
                           <button
-                            onClick={() => setEditingProduct(null)}
+                            onClick={() => {
+                              setEditingProduct(null);
+                              setProductImageSizeKb(null);
+                            }}
                             className="px-6 py-2 rounded-lg font-medium text-mana-text hover:bg-gray-100 transition-colors"
                           >
                             Cancelar
                           </button>
                           <button
                             onClick={saveProduct}
-                            disabled={savingProduct}
+                            disabled={savingProduct || isCompressingProductImage}
                             className="bg-mana-green hover:bg-mana-green-dark text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-70 flex items-center gap-2"
                           >
-                            {savingProduct ? (
+                            {savingProduct || isCompressingProductImage ? (
                               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                             ) : (
                               <CheckCircle size={18} />
@@ -1433,7 +1823,10 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                           </div>
                           <div className="flex gap-2">
                             <button
-                              onClick={() => setEditingProduct(product)}
+                              onClick={() => {
+                                setEditingProduct(product);
+                                setProductImageSizeKb(getImageSizeKb(product.imageUrl));
+                              }}
                               className="p-2 bg-mana-gold/10 text-mana-gold hover:bg-mana-gold hover:text-white rounded-lg transition-colors"
                               title="Editar Produto"
                             >
@@ -1457,20 +1850,208 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
               {activeTab === 'stock' && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-                    <h3 className="font-serif text-2xl font-bold text-mana-green">Gerenciar Estoque</h3>
-                    <div className="relative w-full sm:w-64">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-mana-text-light" size={18} />
+                    <div>
+                      <h3 className="font-serif text-2xl font-bold text-mana-green">Gerenciar Estoque</h3>
+                      <p className="text-xs text-mana-text-light mt-0.5">
+                        {products.filter(p => p.name.toLowerCase().includes(stockSearchTerm.toLowerCase()) || p.category.toLowerCase().includes(stockSearchTerm.toLowerCase())).length} itens no catálogo
+                      </p>
+                    </div>
+                    <div className="relative w-full sm:w-72">
+                      <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-mana-text-light" size={18} />
                       <input
                         type="text"
                         placeholder="Buscar no estoque..."
                         value={stockSearchTerm}
                         onChange={(e) => setStockSearchTerm(e.target.value)}
-                        className="w-full pl-10 pr-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white text-sm"
+                        className="w-full pl-10 pr-9 h-11 rounded-xl border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white text-sm"
                       />
+                      {stockSearchTerm && (
+                        <button
+                          type="button"
+                          onClick={() => setStockSearchTerm('')}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1 rounded-full transition-colors"
+                          title="Limpar busca"
+                        >
+                          <X size={15} />
+                        </button>
+                      )}
                     </div>
                   </div>
 
-                  <div className="bg-white rounded-xl shadow-sm border border-mana-gold/20 overflow-hidden">
+                  {/* Cards Verticais Mobile (block md:hidden) */}
+                  <div className="block md:hidden space-y-3">
+                    {products
+                      .filter(p => p.name.toLowerCase().includes(stockSearchTerm.toLowerCase()) || p.category.toLowerCase().includes(stockSearchTerm.toLowerCase()))
+                      .length === 0 ? (
+                      <div className="bg-white rounded-2xl p-8 text-center text-mana-text-light border border-mana-gold/20 shadow-sm">
+                        <Archive size={36} className="mx-auto text-mana-gold/40 mb-2" />
+                        <p className="text-sm font-medium">Nenhum produto encontrado no estoque.</p>
+                      </div>
+                    ) : (
+                      products
+                        .filter(p => p.name.toLowerCase().includes(stockSearchTerm.toLowerCase()) || p.category.toLowerCase().includes(stockSearchTerm.toLowerCase()))
+                        .map(product => {
+                          const hasStock = product.stockQuantity === undefined || product.stockQuantity === null || product.stockQuantity > 0;
+                          const isAvailable = product.isAvailable !== false && hasStock;
+                          const isSwitchOn = product.isAvailable !== false;
+
+                          return (
+                            <div 
+                              key={product.id}
+                              className={`bg-white rounded-2xl p-4 border shadow-sm transition-all flex flex-col gap-3 ${
+                                !isAvailable 
+                                  ? 'border-gray-200 bg-gray-50/70' 
+                                  : 'border-gray-100'
+                              }`}
+                            >
+                              {/* Linha Superior: Foto + Informações + Toggle Switch */}
+                              <div className="flex items-center justify-between gap-3">
+                                {/* Lado Esquerdo: Identificação do Produto */}
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                  <div className={`w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 border border-gray-200/80 transition-opacity ${
+                                    !isAvailable ? 'opacity-75' : ''
+                                  }`}>
+                                    {product.imageUrl ? (
+                                      <img 
+                                        src={product.imageUrl} 
+                                        alt={product.name} 
+                                        className="w-full h-full object-cover" 
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                        <Utensils size={20} />
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="min-w-0 flex-1">
+                                    <h4 className={`text-sm font-semibold text-gray-800 leading-tight line-clamp-2 transition-opacity ${
+                                      !isAvailable ? 'opacity-75 text-gray-600' : ''
+                                    }`}>
+                                      {product.name}
+                                    </h4>
+                                    <p className="text-xs text-gray-500 font-medium mt-0.5 truncate">
+                                      {product.category}
+                                    </p>
+                                    <div className="mt-1">
+                                      {isAvailable ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                                          Em Estoque
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200/60">
+                                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                                          Esgotado
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Lado Direito: Ação Rápida com o Polegar (Toggle Switch) */}
+                                <div className="flex flex-col items-end gap-1 flex-shrink-0 pl-1">
+                                  <button
+                                    type="button"
+                                    role="switch"
+                                    aria-checked={isSwitchOn}
+                                    onClick={async () => {
+                                      triggerHaptic('light');
+                                      try {
+                                        await updateDoc(doc(db, 'products', product.id), { isAvailable: !isSwitchOn });
+                                        showToast(`Status de ${product.name} atualizado.`);
+                                      } catch (error) {
+                                        console.error("Error updating stock:", error);
+                                        showToast("Erro ao atualizar status.");
+                                      }
+                                    }}
+                                    className={`relative inline-flex flex-shrink-0 min-w-[52px] w-[52px] min-h-[32px] h-[32px] p-0.5 rounded-full cursor-pointer transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-mana-green focus:ring-offset-2 ${
+                                      isSwitchOn ? 'bg-[#2D5A27]' : 'bg-gray-300'
+                                    }`}
+                                    title={isSwitchOn ? 'Pausar venda' : 'Ativar venda'}
+                                  >
+                                    <span
+                                      className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                        isSwitchOn ? 'translate-x-5' : 'translate-x-0'
+                                      }`}
+                                    />
+                                  </button>
+                                  <span className="text-[10px] font-medium text-gray-500 mr-0.5">
+                                    {isSwitchOn ? 'Ativo' : 'Pausado'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Linha Inferior: Controle Ergonômico de Quantidade */}
+                              <div className="flex items-center justify-between pt-2.5 border-t border-gray-100">
+                                <span className="text-xs text-gray-500 font-medium flex items-center gap-1">
+                                  <span>Quantidade:</span>
+                                  <span className="text-[11px] text-gray-400 font-normal">(vazio = ∞)</span>
+                                </span>
+
+                                <div className="flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-200">
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const current = product.stockQuantity ?? 0;
+                                      const nextVal = Math.max(0, current - 1);
+                                      try {
+                                        await updateDoc(doc(db, 'products', product.id), { stockQuantity: nextVal });
+                                      } catch (error) {
+                                        console.error("Error updating stock quantity:", error);
+                                        showToast("Erro ao atualizar quantidade.");
+                                      }
+                                    }}
+                                    disabled={product.stockQuantity === 0}
+                                    className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-700 bg-white border border-gray-200/80 shadow-2xs hover:bg-gray-100 active:scale-95 transition-all font-bold text-base disabled:opacity-30 disabled:cursor-not-allowed"
+                                    title="Diminuir 1"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    placeholder="∞"
+                                    value={product.stockQuantity ?? ''}
+                                    onChange={async (e) => {
+                                      const val = e.target.value;
+                                      const newStock = val === '' ? null : parseInt(val, 10);
+                                      try {
+                                        await updateDoc(doc(db, 'products', product.id), { stockQuantity: newStock });
+                                      } catch (error) {
+                                        console.error("Error updating stock quantity:", error);
+                                        showToast("Erro ao atualizar quantidade.");
+                                      }
+                                    }}
+                                    className="h-9 w-16 text-center font-bold text-sm border-0 bg-transparent focus:outline-none focus:ring-1 focus:ring-mana-green rounded text-gray-800"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      const current = product.stockQuantity ?? 0;
+                                      const nextVal = current + 1;
+                                      try {
+                                        await updateDoc(doc(db, 'products', product.id), { stockQuantity: nextVal });
+                                      } catch (error) {
+                                        console.error("Error updating stock quantity:", error);
+                                        showToast("Erro ao atualizar quantidade.");
+                                      }
+                                    }}
+                                    className="w-9 h-9 rounded-lg flex items-center justify-center text-gray-700 bg-white border border-gray-200/80 shadow-2xs hover:bg-gray-100 active:scale-95 transition-all font-bold text-base"
+                                    title="Aumentar 1"
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+
+                  {/* Tabela Desktop (hidden md:block) */}
+                  <div className="hidden md:block bg-white rounded-xl shadow-sm border border-mana-gold/20 overflow-hidden">
                     <div className="overflow-x-auto">
                       <table className="w-full text-left min-w-[700px]">
                         <thead className="bg-mana-bg border-b border-mana-gold/20">
@@ -1487,57 +2068,127 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                             .map(product => {
                             const hasStock = product.stockQuantity === undefined || product.stockQuantity === null || product.stockQuantity > 0;
                             const isAvailable = product.isAvailable !== false && hasStock;
+                            const isSwitchOn = product.isAvailable !== false;
+
                             return (
                               <tr key={product.id} className="hover:bg-mana-bg/50 transition-colors">
                                 <td className="p-4">
                                   <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 border border-mana-gold/10">
-                                      <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                                    <div className={`w-11 h-11 rounded-lg overflow-hidden flex-shrink-0 border border-mana-gold/20 bg-gray-100 transition-opacity ${
+                                      !isAvailable ? 'opacity-75' : ''
+                                    }`}>
+                                      {product.imageUrl ? (
+                                        <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                          <Utensils size={18} />
+                                        </div>
+                                      )}
                                     </div>
-                                    <span className="font-medium text-mana-text">{product.name}</span>
+                                    <div>
+                                      <span className={`font-semibold text-sm text-gray-800 block transition-opacity ${
+                                        !isAvailable ? 'opacity-75 text-gray-600' : ''
+                                      }`}>
+                                        {product.name}
+                                      </span>
+                                      <span className="text-xs text-gray-500 font-medium">
+                                        {product.category}
+                                      </span>
+                                    </div>
                                   </div>
                                 </td>
-                                <td className="p-4 text-mana-text-light">{product.category}</td>
+                                <td className="p-4 text-sm text-mana-text-light">{product.category}</td>
                                 <td className="p-4 text-center">
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    placeholder="∞"
-                                    value={product.stockQuantity ?? ''}
-                                    onChange={async (e) => {
-                                      const val = e.target.value;
-                                      const newStock = val === '' ? null : parseInt(val, 10);
-                                      try {
-                                        await updateDoc(doc(db, 'products', product.id), { stockQuantity: newStock });
-                                      } catch (error) {
-                                        console.error("Error updating stock quantity:", error);
-                                        showToast("Erro ao atualizar quantidade.");
-                                      }
-                                    }}
-                                    className="w-20 px-2 py-1 text-center border border-mana-gold/30 rounded-lg focus:outline-none focus:border-mana-green focus:ring-1 focus:ring-mana-green bg-white"
-                                  />
+                                  <div className="inline-flex items-center gap-1 bg-gray-50 p-1 rounded-xl border border-gray-200">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const current = product.stockQuantity ?? 0;
+                                        const nextVal = Math.max(0, current - 1);
+                                        try {
+                                          await updateDoc(doc(db, 'products', product.id), { stockQuantity: nextVal });
+                                        } catch (error) {
+                                          console.error("Error updating stock quantity:", error);
+                                          showToast("Erro ao atualizar quantidade.");
+                                        }
+                                      }}
+                                      disabled={product.stockQuantity === 0}
+                                      className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-700 bg-white border border-gray-200/80 shadow-2xs hover:bg-gray-100 active:scale-95 transition-all font-bold text-sm disabled:opacity-30"
+                                      title="Diminuir 1"
+                                    >
+                                      -
+                                    </button>
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      placeholder="∞"
+                                      value={product.stockQuantity ?? ''}
+                                      onChange={async (e) => {
+                                        const val = e.target.value;
+                                        const newStock = val === '' ? null : parseInt(val, 10);
+                                        try {
+                                          await updateDoc(doc(db, 'products', product.id), { stockQuantity: newStock });
+                                        } catch (error) {
+                                          console.error("Error updating stock quantity:", error);
+                                          showToast("Erro ao atualizar quantidade.");
+                                        }
+                                      }}
+                                      className="h-7 w-16 text-center font-bold text-sm border-0 bg-transparent focus:outline-none focus:ring-1 focus:ring-mana-green rounded text-gray-800"
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        const current = product.stockQuantity ?? 0;
+                                        const nextVal = current + 1;
+                                        try {
+                                          await updateDoc(doc(db, 'products', product.id), { stockQuantity: nextVal });
+                                        } catch (error) {
+                                          console.error("Error updating stock quantity:", error);
+                                          showToast("Erro ao atualizar quantidade.");
+                                        }
+                                      }}
+                                      className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-700 bg-white border border-gray-200/80 shadow-2xs hover:bg-gray-100 active:scale-95 transition-all font-bold text-sm"
+                                      title="Aumentar 1"
+                                    >
+                                      +
+                                    </button>
+                                  </div>
                                 </td>
                                 <td className="p-4 text-right">
-                                  <label className="relative inline-flex items-center cursor-pointer">
-                                    <input 
-                                      type="checkbox" 
-                                      className="sr-only peer"
-                                      checked={product.isAvailable !== false}
-                                      onChange={async (e) => {
+                                  <div className="inline-flex items-center gap-3">
+                                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                                      isAvailable 
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60' 
+                                        : 'bg-amber-50 text-amber-700 border-amber-200/60'
+                                    }`}>
+                                      {isAvailable ? 'Em Estoque' : 'Esgotado'}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      role="switch"
+                                      aria-checked={isSwitchOn}
+                                      onClick={async () => {
+                                        triggerHaptic('light');
                                         try {
-                                          await updateDoc(doc(db, 'products', product.id), { isAvailable: e.target.checked });
+                                          await updateDoc(doc(db, 'products', product.id), { isAvailable: !isSwitchOn });
                                           showToast(`Status de ${product.name} atualizado.`);
                                         } catch (error) {
                                           console.error("Error updating stock:", error);
                                           showToast("Erro ao atualizar status.");
                                         }
                                       }}
-                                    />
-                                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-mana-green"></div>
-                                    <span className={`ml-3 text-sm font-medium ${isAvailable ? 'text-mana-green' : 'text-red-500'}`}>
-                                      {isAvailable ? 'Em Estoque' : 'Esgotado'}
-                                    </span>
-                                  </label>
+                                      className={`relative inline-flex flex-shrink-0 min-w-[52px] w-[52px] min-h-[32px] h-[32px] p-0.5 rounded-full cursor-pointer transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-mana-green focus:ring-offset-2 ${
+                                        isSwitchOn ? 'bg-[#2D5A27]' : 'bg-gray-300'
+                                      }`}
+                                      title={isSwitchOn ? 'Pausar venda' : 'Ativar venda'}
+                                    >
+                                      <span
+                                        className={`pointer-events-none inline-block h-7 w-7 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                          isSwitchOn ? 'translate-x-5' : 'translate-x-0'
+                                        }`}
+                                      />
+                                    </button>
+                                  </div>
                                 </td>
                               </tr>
                             );
@@ -1551,7 +2202,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
 
               
               {activeTab === 'checkout' && (
-                <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+                <div className="space-y-6 animate-in fade-in duration-500 pb-6">
                   {/* Status Geral */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <button 
@@ -1979,30 +2630,57 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                               type="file" 
                               accept="image/*"
                               onChange={handleImageUpload}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                              disabled={isCompressingSpecialImage}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
                             />
                             <div className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 bg-mana-bg text-mana-text flex items-center justify-center gap-2 hover:bg-mana-gold/10 transition-colors">
                               <Upload size={18} />
-                              <span>Enviar do Computador</span>
+                              <span>{isCompressingSpecialImage ? 'Otimizando...' : 'Enviar do Computador'}</span>
                             </div>
                           </div>
                         </div>
                       </div>
 
                       {specialImageUrl && (
-                        <div className="mt-4 border border-mana-gold/20 rounded-lg overflow-hidden h-40 relative">
-                          <img src={specialImageUrl} alt="Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/800x400?text=Imagem+Inv%C3%A1lida')} />
-                          <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">Preview da Imagem</div>
+                        <div className="mt-4 flex flex-col gap-1.5">
+                          <div className="border border-mana-gold/20 rounded-lg overflow-hidden h-40 relative bg-gray-50 shadow-xs">
+                            <img src={specialImageUrl} alt="Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/800x400?text=Imagem+Inv%C3%A1lida')} />
+                            <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-xs text-white text-[10px] font-semibold px-2 py-0.5 rounded">Preview da Imagem</div>
+                          </div>
+
+                          {/* Indicador Visual de Compressão do Banner */}
+                          {isCompressingSpecialImage ? (
+                            <span className="text-xs font-medium text-mana-green bg-mana-green/10 border border-mana-green/20 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit animate-pulse">
+                              <div className="w-3 h-3 border-2 border-mana-green border-t-transparent rounded-full animate-spin" />
+                              Otimizando imagem no navegador...
+                            </span>
+                          ) : (specialImageSizeKb ?? getImageSizeKb(specialImageUrl)) !== null ? (
+                            (specialImageSizeKb ?? getImageSizeKb(specialImageUrl))! <= 300 ? (
+                              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                <CheckCircle size={13} className="text-emerald-600" />
+                                Otimizada: ~{specialImageSizeKb ?? getImageSizeKb(specialImageUrl)} KB (Pronta para salvar)
+                              </span>
+                            ) : (
+                              <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                <AlertCircle size={13} className="text-amber-600" />
+                                Tamanho: ~{specialImageSizeKb ?? getImageSizeKb(specialImageUrl)} KB (Recomendado abaixo de 300 KB)
+                              </span>
+                            )
+                          ) : specialImageUrl.startsWith('http') ? (
+                            <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200/70 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                              Link externo da web
+                            </span>
+                          ) : null}
                         </div>
                       )}
 
                       <div className="pt-4 border-t border-mana-gold/20 flex justify-end">
                         <button
                           onClick={saveSpecial}
-                          disabled={savingSpecial}
+                          disabled={savingSpecial || isCompressingSpecialImage}
                           className="bg-mana-green hover:bg-mana-green-dark text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-70 flex items-center gap-2"
                         >
-                          {savingSpecial ? (
+                          {savingSpecial || isCompressingSpecialImage ? (
                             <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                           ) : (
                             <CheckCircle size={18} />
@@ -2012,23 +2690,11 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       </div>
                     </div>
                   </div>
-
-                  {/* Floating Save Button */}
-                  <div className="fixed bottom-8 right-8 z-50">
-                    <button
-                      onClick={saveWhatsappNumber}
-                      className="bg-mana-green hover:bg-mana-green-dark text-white p-4 rounded-full shadow-2xl flex items-center gap-2 transition-all transform hover:scale-105"
-                      title="Salvar todas as configurações desta aba"
-                    >
-                      <CheckCircle size={24} />
-                      <span className="font-bold pr-2">Salvar Configurações</span>
-                    </button>
-                  </div>
                 </div>
               )}
 
               {activeTab === 'settings' && (
-                <div className="space-y-6 animate-in fade-in duration-500">
+                <div className="space-y-6 animate-in fade-in duration-500 pb-6">
                   {/* Personalização da Página Inicial e Identidade Visual */}
                   <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
                     <div className="flex items-center justify-between mb-4">
@@ -2131,13 +2797,14 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                             </div>
 
                             <div className="flex flex-wrap items-center gap-3">
-                              <label className="relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-mana-gold/40 bg-mana-bg hover:bg-mana-gold/15 text-mana-green font-semibold text-xs cursor-pointer transition-colors shadow-sm">
+                              <label className={`relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-mana-gold/40 bg-mana-bg hover:bg-mana-gold/15 text-mana-green font-semibold text-xs cursor-pointer transition-colors shadow-sm ${isCompressingLogo ? 'opacity-60 pointer-events-none' : ''}`}>
                                 <Upload size={16} className="text-mana-gold" />
-                                <span>Enviar Imagem (Computador / Celular)</span>
+                                <span>{isCompressingLogo ? 'Otimizando logo...' : 'Enviar Imagem (Computador / Celular)'}</span>
                                 <input
                                   type="file"
                                   accept="image/png,image/jpeg,image/webp,image/svg+xml"
                                   onChange={handleLogoUpload}
+                                  disabled={isCompressingLogo}
                                   className="sr-only"
                                 />
                               </label>
@@ -2145,6 +2812,30 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                 Ideal: 16:9 com fundo transparente (.png, .webp, .svg)
                               </span>
                             </div>
+
+                            {/* Badge informativa da Logo */}
+                            {isCompressingLogo ? (
+                              <span className="text-xs font-medium text-mana-green bg-mana-green/10 border border-mana-green/20 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit animate-pulse">
+                                <div className="w-3 h-3 border-2 border-mana-green border-t-transparent rounded-full animate-spin" />
+                                Otimizando logo no navegador...
+                              </span>
+                            ) : (logoImageSizeKb ?? getImageSizeKb(logoUrl)) !== null ? (
+                              (logoImageSizeKb ?? getImageSizeKb(logoUrl))! <= 300 ? (
+                                <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                  <CheckCircle size={13} className="text-emerald-600" />
+                                  Otimizada: ~{logoImageSizeKb ?? getImageSizeKb(logoUrl)} KB (Pronta para salvar)
+                                </span>
+                              ) : (
+                                <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                  <AlertCircle size={13} className="text-amber-600" />
+                                  Tamanho: ~{logoImageSizeKb ?? getImageSizeKb(logoUrl)} KB (Recomendado abaixo de 300 KB)
+                                </span>
+                              )
+                            ) : logoUrl?.startsWith('http') ? (
+                              <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200/70 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                Link externo da web
+                              </span>
+                            ) : null}
 
                             {/* Seletor de Formato da Logo */}
                             <div className="pt-2">
@@ -2337,6 +3028,102 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                     </div>
                   </div>
 
+                  {/* Teste e Diagnóstico de Vibração Háptica */}
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Smartphone size={20} className="text-mana-green" />
+                      <h3 className="font-serif text-xl font-bold text-mana-green">Vibração & Feedback Tátil (Haptic)</h3>
+                    </div>
+                    <p className="text-xs text-mana-text-light mb-4 leading-relaxed">
+                      Emite pulsos táteis no celular ao alternar estoque, avançar pedidos ou confirmar salvamentos.
+                    </p>
+
+                    {/* Card de Diagnóstico do Ambiente Atual */}
+                    <div className="p-3.5 rounded-xl border mb-4 text-xs space-y-2 bg-gray-50/80 border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-gray-700">API de Vibração no Aparelho:</span>
+                        <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
+                          typeof window !== 'undefined' && 'vibrate' in navigator 
+                            ? 'bg-emerald-100 text-emerald-800' 
+                            : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {typeof window !== 'undefined' && 'vibrate' in navigator ? '✓ Suportada pelo Sistema' : '✗ Não suportada (iOS/Safari)'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-gray-700">Ambiente de Janela:</span>
+                        <span className={`font-mono font-bold px-2 py-0.5 rounded text-[11px] ${
+                          typeof window !== 'undefined' && window.self !== window.top
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-emerald-100 text-emerald-800'
+                        }`}>
+                          {typeof window !== 'undefined' && window.self !== window.top ? 'Live Preview (Iframe Bloqueado)' : '✓ App Direto / PWA'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {typeof window !== 'undefined' && window.self !== window.top && (
+                      <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 mb-4 flex items-start gap-2.5">
+                        <AlertCircle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div className="space-y-1">
+                          <strong className="block text-amber-950">Por que não vibra no Live Preview do AI Studio?</strong>
+                          <p className="leading-relaxed text-amber-800">
+                            Por segurança dos navegadores, a <strong>Web Vibration API é bloqueada por padrão dentro de iframes</strong> (janelas embutidas).
+                          </p>
+                          <p className="leading-relaxed text-amber-800">
+                            Para sentir a vibração física, abra o <strong>link direto do app</strong> no Chrome do celular Android ou instale o PWA na tela inicial. No iPhone (iOS), a Apple não oferece suporte a vibração em navegadores web.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="space-y-2">
+                      <p className="text-xs font-semibold text-mana-text">Testar Padrões Táteis:</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ok = triggerHaptic('light');
+                            showToast(ok ? "✓ Vibração Leve disparada (35ms)" : "Tentativa enviada (se estiver em PC/iPhone/iframe, o navegador bloqueia)");
+                          }}
+                          className="px-3 py-2.5 text-xs font-medium rounded-lg border border-gray-300 bg-white hover:bg-gray-50 active:scale-95 transition-all text-gray-700 text-center shadow-xs"
+                        >
+                          Toque Leve (35ms)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ok = triggerHaptic('medium');
+                            showToast(ok ? "✓ Vibração Média disparada (60ms)" : "Tentativa enviada (se estiver em PC/iPhone/iframe, o navegador bloqueia)");
+                          }}
+                          className="px-3 py-2.5 text-xs font-medium rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 active:scale-95 transition-all text-blue-800 text-center shadow-xs"
+                        >
+                          Toque Médio (60ms)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ok = triggerHaptic('success');
+                            showToast(ok ? "✓ Vibração Sucesso disparada" : "Tentativa enviada (se estiver em PC/iPhone/iframe, o navegador bloqueia)");
+                          }}
+                          className="px-3 py-2.5 text-xs font-medium rounded-lg border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 active:scale-95 transition-all text-emerald-800 text-center shadow-xs"
+                        >
+                          Sucesso (Duplo)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const ok = triggerHaptic('warning');
+                            showToast(ok ? "✓ Vibração Alerta disparada" : "Tentativa enviada (se estiver em PC/iPhone/iframe, o navegador bloqueia)");
+                          }}
+                          className="px-3 py-2.5 text-xs font-medium rounded-lg border border-red-200 bg-red-50 hover:bg-red-100 active:scale-95 transition-all text-red-800 text-center shadow-xs"
+                        >
+                          Alerta (Triplo)
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Danger Zone moved to bottom of settings */}
                   <div className="bg-white rounded-xl p-6 shadow-sm border border-red-100">
                     <h3 className="font-serif text-xl font-bold text-red-600 mb-4 flex items-center gap-2">
@@ -2358,23 +3145,11 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       </div>
                     </div>
                   </div>
-
-                  {/* Floating Save Button */}
-                  <div className="fixed bottom-8 right-8 z-50">
-                    <button
-                      onClick={saveWhatsappNumber}
-                      className="bg-mana-green hover:bg-mana-green-dark text-white p-4 rounded-full shadow-2xl flex items-center gap-2 transition-all transform hover:scale-105"
-                      title="Salvar todas as configurações desta aba"
-                    >
-                      <CheckCircle size={24} />
-                      <span className="font-bold pr-2">Salvar Configurações</span>
-                    </button>
-                  </div>
                 </div>
               )}
 
               {activeTab === 'care_guide' && (
-                <div className="space-y-6 animate-in fade-in duration-500 pb-20">
+                <div className="space-y-6 animate-in fade-in duration-500 pb-6">
                   {/* Topo da Aba */}
                   <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div>
@@ -2452,8 +3227,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                   </div>
 
                   {/* Bloco 2: Cards Editáveis de Produtos */}
-                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20 space-y-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-mana-gold/20 pb-4">
+                  <div className="bg-white rounded-xl p-4 sm:p-6 shadow-sm border border-mana-gold/20 space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-mana-gold/20 pb-4">
                       <div>
                         <h4 className="font-serif font-bold text-mana-green text-lg">
                           Cards de Produtos ({careGuideData.items.length})
@@ -2463,222 +3238,289 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                         </p>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={handleAddGuideCard}
-                        className="bg-mana-green hover:bg-mana-green-dark text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all self-start sm:self-auto"
-                      >
-                        <Plus size={16} />
-                        Adicionar Novo Card
-                      </button>
+                      <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={expandAllCards}
+                          className="text-xs text-mana-green hover:text-mana-green-dark hover:underline font-semibold px-2 py-1 transition-colors"
+                        >
+                          Expandir todos
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={collapseAllCards}
+                          className="text-xs text-gray-500 hover:text-gray-700 hover:underline font-medium px-2 py-1 transition-colors"
+                        >
+                          Recolher todos
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddGuideCard}
+                          className="bg-mana-green hover:bg-mana-green-dark text-white px-3.5 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 ml-1"
+                        >
+                          <Plus size={16} />
+                          <span>Adicionar Card</span>
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="space-y-6">
-                      {careGuideData.items.map((item, index) => (
-                        <div 
-                          key={item.id}
-                          className="rounded-2xl border border-mana-gold/30 bg-[#FAF8F3] p-5 relative transition-all hover:border-mana-green/40 shadow-sm"
-                        >
-                          {/* Topo do Card de Produto */}
-                          <div className="flex items-center justify-between gap-3 pb-3 mb-4 border-b border-mana-gold/20">
-                            <div className="flex items-center gap-2">
-                              <span className="w-6 h-6 rounded-full bg-mana-green text-white text-xs font-bold flex items-center justify-center">
-                                {index + 1}
-                              </span>
-                              <span className="font-serif font-bold text-mana-green text-base">
-                                {item.title || 'Produto sem título'}
-                              </span>
-                              <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-mana-gold/15 text-mana-gold">
-                                {item.subtitle || 'Subtítulo'}
-                              </span>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveGuideCard(item.id)}
-                              className="text-red-500 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 transition-colors"
-                              title="Excluir este card"
+                    <div className="space-y-3">
+                      {careGuideData.items.map((item, index) => {
+                        const isExpanded = !!expandedCards[item.id];
+                        return (
+                          <div 
+                            key={item.id}
+                            className={`rounded-2xl border transition-all shadow-xs overflow-hidden ${
+                              isExpanded 
+                                ? 'border-mana-green/40 bg-white ring-1 ring-mana-green/20' 
+                                : 'border-gray-200/90 bg-[#FAF8F3] hover:border-mana-gold/40'
+                            }`}
+                          >
+                            {/* Gatilho / Barra do Acordeão (Sempre Visível) */}
+                            <div 
+                              onClick={() => toggleCardExpansion(item.id)}
+                              className="w-full p-3.5 sm:p-4 flex items-center justify-between gap-3 bg-gray-50/90 hover:bg-gray-100 cursor-pointer transition-colors select-none"
+                              role="button"
+                              tabIndex={0}
+                              aria-expanded={isExpanded}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  toggleCardExpansion(item.id);
+                                }
+                              }}
                             >
-                              <Trash2 size={16} />
-                            </button>
-                          </div>
+                              {/* Lado Esquerdo */}
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <span className={`w-6 h-6 rounded-full text-xs font-bold flex items-center justify-center shrink-0 transition-colors ${
+                                  isExpanded ? 'bg-mana-green text-white' : 'bg-gray-200 text-gray-700'
+                                }`}>
+                                  {index + 1}
+                                </span>
+                                <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                                  <span className="font-serif font-bold text-mana-green text-sm sm:text-base truncate">
+                                    {item.title || 'Produto sem título'}
+                                  </span>
+                                  {item.subtitle && (
+                                    <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-green-100 text-green-800 shrink-0">
+                                      {item.subtitle}
+                                    </span>
+                                  )}
+                                  {item.readyToEat && (
+                                    <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 shrink-0">
+                                      Pronto p/ consumo
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
 
-                          {/* Campos do Card */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
-                            <div>
-                              <label className="block font-bold text-mana-text mb-1">Título do Produto</label>
-                              <input
-                                type="text"
-                                value={item.title}
-                                onChange={(e) => handleUpdateGuideCard(item.id, 'title', e.target.value)}
-                                placeholder="Ex: MINI PIZZAS"
-                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white font-semibold"
-                              />
+                              {/* Lado Direito */}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setGuideCardToDelete(item);
+                                  }}
+                                  className="text-red-500 hover:text-red-700 p-2 rounded-lg hover:bg-red-50 transition-colors"
+                                  title="Excluir este card"
+                                  aria-label="Excluir este card"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                                <div 
+                                  className={`p-1.5 text-gray-500 transition-transform duration-200 transform ${
+                                    isExpanded ? 'rotate-180 text-mana-green' : ''
+                                  }`}
+                                >
+                                  <ChevronDown size={18} />
+                                </div>
+                              </div>
                             </div>
 
-                            <div>
-                              <label className="block font-bold text-mana-text mb-1">Subtítulo do Produto</label>
-                              <input
-                                type="text"
-                                value={item.subtitle}
-                                onChange={(e) => handleUpdateGuideCard(item.id, 'subtitle', e.target.value)}
-                                placeholder="Ex: Produto congelado ou Produto fresco"
-                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                              />
-                            </div>
+                            {/* Corpo do Card (Conteúdo Expandido) */}
+                            {isExpanded && (
+                              <div className="p-4 sm:p-5 pt-3 space-y-4 border-t border-gray-200/70 bg-white rounded-b-xl animate-in fade-in-50 duration-200">
+                                {/* Campos do Card */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+                                  <div>
+                                    <label className="block font-bold text-mana-text mb-1">Título do Produto</label>
+                                    <input
+                                      type="text"
+                                      value={item.title}
+                                      onChange={(e) => handleUpdateGuideCard(item.id, 'title', e.target.value)}
+                                      placeholder="Ex: MINI PIZZAS"
+                                      className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white font-semibold"
+                                    />
+                                  </div>
 
-                            <div>
-                              <label className="block font-bold text-mana-text mb-1">Ícone de Conservação</label>
-                              <select
-                                value={item.storageIcon || 'freezer'}
-                                onChange={(e) => handleUpdateGuideCard(item.id, 'storageIcon', e.target.value)}
-                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                              >
-                                <option value="freezer">Floco de Neve (Freezer)</option>
-                                <option value="thermometer">Termômetro (Local Fresco)</option>
-                              </select>
-                            </div>
+                                  <div>
+                                    <label className="block font-bold text-mana-text mb-1">Subtítulo do Produto</label>
+                                    <input
+                                      type="text"
+                                      value={item.subtitle}
+                                      onChange={(e) => handleUpdateGuideCard(item.id, 'subtitle', e.target.value)}
+                                      placeholder="Ex: Produto congelado ou Produto fresco"
+                                      className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                    />
+                                  </div>
 
-                            <div className="sm:col-span-2 lg:col-span-3">
-                              <label className="block font-bold text-mana-text mb-1">Instrução de Conservar</label>
-                              <input
-                                type="text"
-                                value={item.storageType}
-                                onChange={(e) => handleUpdateGuideCard(item.id, 'storageType', e.target.value)}
-                                placeholder="Ex: Freezer. ou Mantenha na embalagem original bem fechada..."
-                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                              />
-                            </div>
+                                  <div>
+                                    <label className="block font-bold text-mana-text mb-1">Ícone de Conservação</label>
+                                    <select
+                                      value={item.storageIcon || 'freezer'}
+                                      onChange={(e) => handleUpdateGuideCard(item.id, 'storageIcon', e.target.value)}
+                                      className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                    >
+                                      <option value="freezer">Floco de Neve (Freezer)</option>
+                                      <option value="thermometer">Termômetro (Local Fresco)</option>
+                                    </select>
+                                  </div>
 
-                            <div className="sm:col-span-2 lg:col-span-3 pt-2">
-                              <label className="inline-flex items-center gap-2 cursor-pointer font-bold text-mana-green">
-                                <input
-                                  type="checkbox"
-                                  checked={item.readyToEat || false}
-                                  onChange={(e) => handleUpdateGuideCard(item.id, 'readyToEat', e.target.checked)}
-                                  className="rounded text-mana-green focus:ring-mana-green w-4 h-4"
-                                />
-                                <span>Produto pronto para consumo imediato (Ex: Bolachinhas, dispensando aquecimento)</span>
-                              </label>
-                            </div>
+                                  <div className="sm:col-span-2 lg:col-span-3">
+                                    <label className="block font-bold text-mana-text mb-1">Instrução de Conservar</label>
+                                    <input
+                                      type="text"
+                                      value={item.storageType}
+                                      onChange={(e) => handleUpdateGuideCard(item.id, 'storageType', e.target.value)}
+                                      placeholder="Ex: Freezer. ou Mantenha na embalagem original bem fechada..."
+                                      className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                    />
+                                  </div>
 
-                            {!item.readyToEat && (
-                              <>
-                                <div>
-                                  <label className="block font-bold text-mana-text mb-1">Título da Seção de Preparo</label>
-                                  <input
-                                    type="text"
-                                    value={item.prepareTitle || ''}
-                                    onChange={(e) => handleUpdateGuideCard(item.id, 'prepareTitle', e.target.value)}
-                                    placeholder="Ex: Preparo (direto do congelador): ou Para consumir:"
-                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                                  />
+                                  <div className="sm:col-span-2 lg:col-span-3 pt-1">
+                                    <label className="inline-flex items-center gap-2 cursor-pointer font-bold text-mana-green">
+                                      <input
+                                        type="checkbox"
+                                        checked={item.readyToEat || false}
+                                        onChange={(e) => handleUpdateGuideCard(item.id, 'readyToEat', e.target.checked)}
+                                        className="rounded text-mana-green focus:ring-mana-green w-4 h-4"
+                                      />
+                                      <span>Produto pronto para consumo imediato (Ex: Bolachinhas, dispensando aquecimento)</span>
+                                    </label>
+                                  </div>
+
+                                  {!item.readyToEat && (
+                                    <>
+                                      <div>
+                                        <label className="block font-bold text-mana-text mb-1">Título da Seção de Preparo</label>
+                                        <input
+                                          type="text"
+                                          value={item.prepareTitle || ''}
+                                          onChange={(e) => handleUpdateGuideCard(item.id, 'prepareTitle', e.target.value)}
+                                          placeholder="Ex: Preparo (direto do congelador): ou Para consumir:"
+                                          className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="block font-bold text-mana-text mb-1">Ícone de Preparo</label>
+                                        <select
+                                          value={item.prepareIcon || 'flame'}
+                                          onChange={(e) => handleUpdateGuideCard(item.id, 'prepareIcon', e.target.value)}
+                                          className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                        >
+                                          <option value="flame">Chama / Fogo</option>
+                                          <option value="utensils">Talheres (Para consumir)</option>
+                                        </select>
+                                      </div>
+
+                                      <div>
+                                        <label className="block font-bold text-mana-text mb-1">Air Fryer (Tempo/Graus)</label>
+                                        <input
+                                          type="text"
+                                          value={item.airFryer || ''}
+                                          onChange={(e) => handleUpdateGuideCard(item.id, 'airFryer', e.target.value)}
+                                          placeholder="Ex: 180 °C por 6 a 8 minutos."
+                                          className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="block font-bold text-mana-text mb-1">Forno Convencional (Tempo/Graus)</label>
+                                        <input
+                                          type="text"
+                                          value={item.oven || ''}
+                                          onChange={(e) => handleUpdateGuideCard(item.id, 'oven', e.target.value)}
+                                          placeholder="Ex: Pré-aquecer a 180 °C e assar por 10 a 12 minutos."
+                                          className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="block font-bold text-mana-text mb-1">Descongelamento na Geladeira</label>
+                                        <input
+                                          type="text"
+                                          value={item.thawRefrigerator || ''}
+                                          onChange={(e) => handleUpdateGuideCard(item.id, 'thawRefrigerator', e.target.value)}
+                                          placeholder="Ex: Retire da embalagem e deixe na geladeira por algumas horas..."
+                                          className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                        />
+                                      </div>
+
+                                      <div>
+                                        <label className="block font-bold text-mana-text mb-1">Micro-ondas</label>
+                                        <input
+                                          type="text"
+                                          value={item.microwave || ''}
+                                          onChange={(e) => handleUpdateGuideCard(item.id, 'microwave', e.target.value)}
+                                          placeholder="Ex: Retire da embalagem e aqueça por 30 a 40 segundos..."
+                                          className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                        />
+                                      </div>
+
+                                      <div className="sm:col-span-2 lg:col-span-3">
+                                        <label className="block font-bold text-mana-text mb-1">Observações de Preparo (Ex: Ponto do queijo ou da massa)</label>
+                                        <input
+                                          type="text"
+                                          value={item.notes || ''}
+                                          onChange={(e) => handleUpdateGuideCard(item.id, 'notes', e.target.value)}
+                                          placeholder="Ex: (O tempo pode variar de acordo com o aparelho. Estarão prontas quando o queijo derreter...)"
+                                          className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                        />
+                                      </div>
+
+                                      <div className="sm:col-span-2 lg:col-span-3">
+                                        <label className="block font-bold text-amber-800 mb-1">Aviso de Evitar Micro-ondas (Opcional)</label>
+                                        <input
+                                          type="text"
+                                          value={item.avoidMicrowaveNotice || ''}
+                                          onChange={(e) => handleUpdateGuideCard(item.id, 'avoidMicrowaveNotice', e.target.value)}
+                                          placeholder="Ex: Dica: evite o micro-ondas para manter a textura perfeita e a massa no ponto."
+                                          className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-amber-50/50"
+                                        />
+                                      </div>
+                                    </>
+                                  )}
+
+                                  <div>
+                                    <label className="block font-bold text-mana-text mb-1">Sabores (Exibido na tarja cinza)</label>
+                                    <input
+                                      type="text"
+                                      value={item.flavors || ''}
+                                      onChange={(e) => handleUpdateGuideCard(item.id, 'flavors', e.target.value)}
+                                      placeholder="Ex: Sabores: queijo com tomate | frango com queijo"
+                                      className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                    />
+                                  </div>
+
+                                  <div className="sm:col-span-2">
+                                    <label className="block font-bold text-mana-text mb-1">Dica de Consumo (Exibido com ícone de lâmpada)</label>
+                                    <input
+                                      type="text"
+                                      value={item.tip || ''}
+                                      onChange={(e) => handleUpdateGuideCard(item.id, 'tip', e.target.value)}
+                                      placeholder="Ex: Dica: consuma ainda morno para uma experiência mais saborosa!"
+                                      className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
+                                    />
+                                  </div>
                                 </div>
-
-                                <div>
-                                  <label className="block font-bold text-mana-text mb-1">Ícone de Preparo</label>
-                                  <select
-                                    value={item.prepareIcon || 'flame'}
-                                    onChange={(e) => handleUpdateGuideCard(item.id, 'prepareIcon', e.target.value)}
-                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                                  >
-                                    <option value="flame">Chama / Fogo</option>
-                                    <option value="utensils">Talheres (Para consumir)</option>
-                                  </select>
-                                </div>
-
-                                <div>
-                                  <label className="block font-bold text-mana-text mb-1">Air Fryer (Tempo/Graus)</label>
-                                  <input
-                                    type="text"
-                                    value={item.airFryer || ''}
-                                    onChange={(e) => handleUpdateGuideCard(item.id, 'airFryer', e.target.value)}
-                                    placeholder="Ex: 180 °C por 6 a 8 minutos."
-                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                                  />
-                                </div>
-
-                                <div>
-                                  <label className="block font-bold text-mana-text mb-1">Forno Convencional (Tempo/Graus)</label>
-                                  <input
-                                    type="text"
-                                    value={item.oven || ''}
-                                    onChange={(e) => handleUpdateGuideCard(item.id, 'oven', e.target.value)}
-                                    placeholder="Ex: Pré-aquecer a 180 °C e assar por 10 a 12 minutos."
-                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                                  />
-                                </div>
-
-                                <div>
-                                  <label className="block font-bold text-mana-text mb-1">Descongelamento na Geladeira</label>
-                                  <input
-                                    type="text"
-                                    value={item.thawRefrigerator || ''}
-                                    onChange={(e) => handleUpdateGuideCard(item.id, 'thawRefrigerator', e.target.value)}
-                                    placeholder="Ex: Retire da embalagem e deixe na geladeira por algumas horas..."
-                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                                  />
-                                </div>
-
-                                <div>
-                                  <label className="block font-bold text-mana-text mb-1">Micro-ondas</label>
-                                  <input
-                                    type="text"
-                                    value={item.microwave || ''}
-                                    onChange={(e) => handleUpdateGuideCard(item.id, 'microwave', e.target.value)}
-                                    placeholder="Ex: Retire da embalagem e aqueça por 30 a 40 segundos..."
-                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                                  />
-                                </div>
-
-                                <div className="sm:col-span-2 lg:col-span-3">
-                                  <label className="block font-bold text-mana-text mb-1">Observações de Preparo (Ex: Ponto do queijo ou da massa)</label>
-                                  <input
-                                    type="text"
-                                    value={item.notes || ''}
-                                    onChange={(e) => handleUpdateGuideCard(item.id, 'notes', e.target.value)}
-                                    placeholder="Ex: (O tempo pode variar de acordo com o aparelho. Estarão prontas quando o queijo derreter...)"
-                                    className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                                  />
-                                </div>
-
-                                <div className="sm:col-span-2 lg:col-span-3">
-                                  <label className="block font-bold text-amber-800 mb-1">Aviso de Evitar Micro-ondas (Opcional)</label>
-                                  <input
-                                    type="text"
-                                    value={item.avoidMicrowaveNotice || ''}
-                                    onChange={(e) => handleUpdateGuideCard(item.id, 'avoidMicrowaveNotice', e.target.value)}
-                                    placeholder="Ex: Dica: evite o micro-ondas para manter a textura perfeita e a massa no ponto."
-                                    className="w-full px-3 py-2 rounded-lg border border-amber-300 bg-amber-50/50"
-                                  />
-                                </div>
-                              </>
+                              </div>
                             )}
-
-                            <div>
-                              <label className="block font-bold text-mana-text mb-1">Sabores (Exibido na tarja cinza)</label>
-                              <input
-                                type="text"
-                                value={item.flavors || ''}
-                                onChange={(e) => handleUpdateGuideCard(item.id, 'flavors', e.target.value)}
-                                placeholder="Ex: Sabores: queijo com tomate | frango com queijo"
-                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                              />
-                            </div>
-
-                            <div className="sm:col-span-2">
-                              <label className="block font-bold text-mana-text mb-1">Dica de Consumo (Exibido com ícone de lâmpada)</label>
-                              <input
-                                type="text"
-                                value={item.tip || ''}
-                                onChange={(e) => handleUpdateGuideCard(item.id, 'tip', e.target.value)}
-                                placeholder="Ex: Dica: consuma ainda morno para uma experiência mais saborosa!"
-                                className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
-                              />
-                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -2809,36 +3651,349 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                         />
                       </div>
                     </div>
-
-                    <div className="flex justify-end pt-4 border-t border-mana-gold/20">
-                      <button
-                        type="button"
-                        onClick={saveCareGuide}
-                        disabled={savingCareGuide}
-                        className="bg-mana-green hover:bg-mana-green-dark text-white px-6 py-2.5 rounded-xl font-bold text-sm transition-all shadow-md flex items-center gap-2"
-                      >
-                        <CheckCircle size={18} />
-                        <span>{savingCareGuide ? 'Gravando...' : 'Salvar Alterações do Guia'}</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Floating Save Button para care_guide */}
-                  <div className="fixed bottom-8 right-8 z-50">
-                    <button
-                      onClick={saveCareGuide}
-                      disabled={savingCareGuide}
-                      className="bg-mana-green hover:bg-mana-green-dark text-white p-4 rounded-full shadow-2xl flex items-center gap-2 transition-all transform hover:scale-105 disabled:opacity-50"
-                      title="Salvar alterações do Guia"
-                    >
-                      <CheckCircle size={24} />
-                      <span className="font-bold pr-2">{savingCareGuide ? 'Salvando...' : 'Salvar Guia'}</span>
-                    </button>
                   </div>
                 </div>
               )}
             </>
           )}
+        </div>
+
+        {/* Barra de Salvar Fixa e Aderente (Diretamente acima da barra de navegação no mobile / Rodapé no desktop) */}
+        {(activeTab === 'checkout' || activeTab === 'settings' || activeTab === 'care_guide') && (
+          <div className="shrink-0 z-25 bg-white/95 backdrop-blur-md border-t border-gray-200 px-4 py-2.5 sm:px-6 sm:py-3 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] flex items-center justify-between gap-3">
+            {activeTab === 'care_guide' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleResetGuideToDefault}
+                  disabled={savingCareGuide}
+                  className="border border-gray-300 text-gray-700 hover:bg-gray-50 active:bg-gray-100 px-3.5 sm:px-4 min-h-[46px] rounded-xl font-medium text-xs sm:text-sm flex items-center justify-center gap-1.5 transition-colors active:scale-95 shrink-0 disabled:opacity-50"
+                  title="Restaura os dados originais do encarte"
+                >
+                  <RotateCcw size={16} />
+                  <span className="hidden sm:inline">Restaurar Padrão</span>
+                  <span className="sm:hidden">Restaurar</span>
+                </button>
+
+                <div className="flex items-center gap-3 flex-1 sm:flex-initial justify-end">
+                  <button
+                    type="button"
+                    onClick={saveCareGuide}
+                    disabled={savingCareGuide}
+                    className="bg-[#2D5A27] hover:bg-[#23471f] active:bg-[#1c3a19] text-white font-semibold px-6 min-h-[46px] rounded-xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 flex-1 sm:flex-initial text-sm sm:text-base disabled:opacity-75 disabled:cursor-not-allowed"
+                    title="Salvar alterações do Guia de Conservação & Preparo"
+                  >
+                    {savingCareGuide ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Salvando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={20} className="stroke-[2.5]" />
+                        <span>Salvar Guia</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="hidden sm:flex items-center gap-2 text-xs sm:text-sm text-mana-text-light font-medium min-w-0">
+                  <CheckCircle size={16} className="text-[#2D5A27] shrink-0" />
+                  <span className="truncate">
+                    {activeTab === 'checkout' 
+                      ? 'Frete, prazos, horários e WhatsApp' 
+                      : 'Identidade visual e textos da loja'}
+                  </span>
+                </div>
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={saveWhatsappNumber}
+                    disabled={savingSettings || isCompressingLogo}
+                    className="bg-[#2D5A27] hover:bg-[#23471f] active:bg-[#1c3a19] text-white font-semibold px-6 min-h-[46px] rounded-xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2 flex-1 sm:flex-initial text-sm sm:text-base disabled:opacity-75 disabled:cursor-not-allowed"
+                    title={activeTab === 'checkout' ? "Salvar todas as configurações desta aba" : "Salvar personalização e configurações"}
+                  >
+                    {savingSettings || isCompressingLogo ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Salvando...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check size={20} className="stroke-[2.5]" />
+                        <span>
+                          {activeTab === 'checkout' ? 'Salvar Configurações' : 'Salvar Personalização'}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Backdrop do Menu Mais (Mobile - md:hidden) */}
+        {showMoreMenu && (
+          <div 
+            className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-xs z-35 animate-in fade-in duration-200"
+            onClick={() => setShowMoreMenu(false)}
+            aria-hidden="true"
+          />
+        )}
+
+        {/* Gaveta / Bottom-Sheet "Mais" (Mobile - md:hidden) */}
+        {showMoreMenu && (
+          <div className={`md:hidden fixed inset-x-3 z-40 bg-white rounded-3xl p-3 shadow-2xl border border-mana-gold/20 animate-in slide-in-from-bottom-5 duration-200 flex flex-col max-h-[75vh] ${(activeTab === 'checkout' || activeTab === 'settings' || activeTab === 'care_guide') ? 'bottom-[124px]' : 'bottom-[68px]'}`}>
+            <div className="px-3 py-2 flex items-center justify-between border-b border-gray-100 mb-1">
+              <div className="flex items-center gap-2">
+                <span className="w-1.5 h-4 bg-mana-green rounded-full"></span>
+                <span className="text-xs font-bold uppercase tracking-wider text-mana-green">Outros Módulos</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMoreMenu(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-700 rounded-full hover:bg-gray-100 transition-colors"
+                aria-label="Fechar menu"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-1 overflow-y-auto py-1 overscroll-contain">
+              {/* Cardápio */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('menu');
+                  setShowMoreMenu(false);
+                }}
+                className={`w-full p-3 rounded-2xl flex items-center gap-3.5 transition-all text-left ${
+                  activeTab === 'menu'
+                    ? 'bg-[#2D5A27]/10 text-[#2D5A27] font-semibold ring-1 ring-[#2D5A27]/20'
+                    : 'text-mana-text hover:bg-mana-bg'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  activeTab === 'menu' ? 'bg-[#2D5A27] text-white' : 'bg-mana-bg text-mana-green'
+                }`}>
+                  <Utensils size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold">Cardápio</div>
+                  <div className="text-xs text-mana-text-light truncate">Produtos, categorias e descrições</div>
+                </div>
+                {activeTab === 'menu' && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#2D5A27] shrink-0"></span>
+                )}
+              </button>
+
+              {/* Entregas & Checkout */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('checkout');
+                  setShowMoreMenu(false);
+                }}
+                className={`w-full p-3 rounded-2xl flex items-center gap-3.5 transition-all text-left ${
+                  activeTab === 'checkout'
+                    ? 'bg-[#2D5A27]/10 text-[#2D5A27] font-semibold ring-1 ring-[#2D5A27]/20'
+                    : 'text-mana-text hover:bg-mana-bg'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  activeTab === 'checkout' ? 'bg-[#2D5A27] text-white' : 'bg-mana-bg text-mana-green'
+                }`}>
+                  <ShoppingBag size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold">Entregas & Checkout</div>
+                  <div className="text-xs text-mana-text-light truncate">Horários, taxas e regras de frete</div>
+                </div>
+                {activeTab === 'checkout' && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#2D5A27] shrink-0"></span>
+                )}
+              </button>
+
+              {/* Clientes */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('customers');
+                  setShowMoreMenu(false);
+                }}
+                className={`w-full p-3 rounded-2xl flex items-center gap-3.5 transition-all text-left ${
+                  activeTab === 'customers'
+                    ? 'bg-[#2D5A27]/10 text-[#2D5A27] font-semibold ring-1 ring-[#2D5A27]/20'
+                    : 'text-mana-text hover:bg-mana-bg'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  activeTab === 'customers' ? 'bg-[#2D5A27] text-white' : 'bg-mana-bg text-mana-green'
+                }`}>
+                  <Users size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold">Clientes</div>
+                  <div className="text-xs text-mana-text-light truncate">Histórico, perfis e permissões</div>
+                </div>
+                {activeTab === 'customers' && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#2D5A27] shrink-0"></span>
+                )}
+              </button>
+
+              {/* Guia de Preparo */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('care_guide');
+                  setShowMoreMenu(false);
+                }}
+                className={`w-full p-3 rounded-2xl flex items-center gap-3.5 transition-all text-left ${
+                  activeTab === 'care_guide'
+                    ? 'bg-[#2D5A27]/10 text-[#2D5A27] font-semibold ring-1 ring-[#2D5A27]/20'
+                    : 'text-mana-text hover:bg-mana-bg'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  activeTab === 'care_guide' ? 'bg-[#2D5A27] text-white' : 'bg-mana-bg text-mana-green'
+                }`}>
+                  <BookOpen size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold">Guia de Preparo</div>
+                  <div className="text-xs text-mana-text-light truncate">Cards, tempos de forno e conservação</div>
+                </div>
+                {activeTab === 'care_guide' && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#2D5A27] shrink-0"></span>
+                )}
+              </button>
+
+              {/* Configurações */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('settings');
+                  setShowMoreMenu(false);
+                }}
+                className={`w-full p-3 rounded-2xl flex items-center gap-3.5 transition-all text-left ${
+                  activeTab === 'settings'
+                    ? 'bg-[#2D5A27]/10 text-[#2D5A27] font-semibold ring-1 ring-[#2D5A27]/20'
+                    : 'text-mana-text hover:bg-mana-bg'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                  activeTab === 'settings' ? 'bg-[#2D5A27] text-white' : 'bg-mana-bg text-mana-green'
+                }`}>
+                  <Settings size={20} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold">Configurações</div>
+                  <div className="text-xs text-mana-text-light truncate">Logo 16:9, WhatsApp, prazos e loja</div>
+                </div>
+                {activeTab === 'settings' && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#2D5A27] shrink-0"></span>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Barra Inferior Fixa de Navegação (Mobile - md:hidden) */}
+        <div className="md:hidden shrink-0 z-30 bg-white/95 backdrop-blur-md border-t border-gray-200/80 px-2 py-1.5 flex items-center justify-around shadow-[0_-4px_16px_rgba(0,0,0,0.08)]">
+          {/* 1. Resumo */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('dashboard');
+              setShowMoreMenu(false);
+            }}
+            className={`min-h-[52px] flex-1 flex flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${
+              activeTab === 'dashboard'
+                ? 'text-[#2D5A27] font-semibold'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <div className={`p-1 rounded-xl transition-all ${activeTab === 'dashboard' ? 'bg-[#2D5A27]/10' : ''}`}>
+              <ShoppingBag size={20} className={activeTab === 'dashboard' ? 'stroke-[2.5]' : 'stroke-2'} />
+            </div>
+            <span>Resumo</span>
+          </button>
+
+          {/* 2. Pedidos */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('orders');
+              setShowMoreMenu(false);
+            }}
+            className={`min-h-[52px] flex-1 flex flex-col items-center justify-center gap-1 text-xs font-medium transition-colors relative ${
+              activeTab === 'orders'
+                ? 'text-[#2D5A27] font-semibold'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <div className={`p-1 rounded-xl transition-all relative inline-flex items-center justify-center ${activeTab === 'orders' ? 'bg-[#2D5A27]/10' : ''}`}>
+              <Package size={20} className={activeTab === 'orders' ? 'stroke-[2.5]' : 'stroke-2'} />
+              {pendingOrdersCount > 0 && (
+                <span
+                  className="absolute -top-1 -right-2 bg-red-600 text-white text-[11px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center shadow-sm animate-pulse ring-2 ring-white"
+                  title={`${pendingOrdersCount} pedido(s) pendente(s)`}
+                >
+                  {pendingOrdersCount > 99 ? '99+' : pendingOrdersCount}
+                </span>
+              )}
+            </div>
+            <span>Pedidos</span>
+          </button>
+
+          {/* 3. Estoque */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('stock');
+              setShowMoreMenu(false);
+            }}
+            className={`min-h-[52px] flex-1 flex flex-col items-center justify-center gap-1 text-xs font-medium transition-colors ${
+              activeTab === 'stock'
+                ? 'text-[#2D5A27] font-semibold'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <div className={`p-1 rounded-xl transition-all ${activeTab === 'stock' ? 'bg-[#2D5A27]/10' : ''}`}>
+              <Archive size={20} className={activeTab === 'stock' ? 'stroke-[2.5]' : 'stroke-2'} />
+            </div>
+            <span>Estoque</span>
+          </button>
+
+          {/* 4. Mais */}
+          <button
+            type="button"
+            onClick={() => setShowMoreMenu(prev => !prev)}
+            className={`min-h-[52px] flex-1 flex flex-col items-center justify-center gap-1 text-xs font-medium transition-colors relative ${
+              isMoreActive
+                ? 'text-[#2D5A27] font-semibold'
+                : 'text-gray-500 hover:text-gray-800'
+            }`}
+          >
+            <div className={`p-1 rounded-xl transition-all relative ${isMoreActive ? 'bg-[#2D5A27]/10' : ''}`}>
+              <MoreHorizontal size={20} className={isMoreActive ? 'stroke-[2.5]' : 'stroke-2'} />
+              {isMoreActive && (
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-[#2D5A27] rounded-full ring-2 ring-white"></span>
+              )}
+            </div>
+            <span>
+              {isMoreActive 
+                ? (activeTab === 'menu' ? 'Cardápio' :
+                   activeTab === 'checkout' ? 'Entregas' :
+                   activeTab === 'customers' ? 'Clientes' :
+                   activeTab === 'care_guide' ? 'Preparo' :
+                   activeTab === 'settings' ? 'Ajustes' : 'Mais')
+                : 'Mais'}
+            </span>
+          </button>
         </div>
       </div>
       {/* Modal de Confirmação de Exclusão de Produto */}
@@ -2870,6 +4025,37 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                 ) : (
                   'Excluir'
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão de Card do Guia */}
+      {guideCardToDelete && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-mana-gold/20 animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 bg-red-50 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Trash2 size={32} />
+            </div>
+            <h3 className="text-xl font-serif font-bold text-mana-green text-center mb-2">Excluir Card do Guia?</h3>
+            <p className="text-mana-text-light text-center mb-6 text-sm">
+              Tem certeza que deseja excluir o card de <span className="font-bold text-mana-text">"{guideCardToDelete.title || 'Produto sem título'}"</span>?
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setGuideCardToDelete(null)}
+                className="flex-1 py-3 px-4 rounded-xl border border-mana-gold/30 text-mana-text font-medium hover:bg-mana-bg transition-colors active:scale-95"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmRemoveGuideCard}
+                className="flex-1 py-3 px-4 rounded-xl bg-red-500 text-white font-bold hover:bg-red-600 shadow-lg shadow-red-500/20 transition-colors active:scale-95 flex items-center justify-center gap-2"
+              >
+                Excluir
               </button>
             </div>
           </div>

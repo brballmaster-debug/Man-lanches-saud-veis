@@ -214,6 +214,8 @@ export default function App() {
         setLateSlotsBlocked(false);
         setDeliverySlotsEnabled(true);
       }
+    }, (error) => {
+      console.warn("Firestore [settings/store] offline/reconnecting:", error.message);
     });
 
     const specialRef = doc(db, 'settings', 'special');
@@ -223,12 +225,16 @@ export default function App() {
       } else {
         setSpecialOfTheDay(null);
       }
+    }, (error) => {
+      console.warn("Firestore [settings/special] offline/reconnecting:", error.message);
     });
 
     const unsubInfoBanner = onSnapshot(doc(db, 'settings', 'info_banner'), (docSnap) => {
       if (docSnap.exists()) {
         setInfoBannerData(docSnap.data());
       }
+    }, (error) => {
+      console.warn("Firestore [settings/info_banner] offline/reconnecting:", error.message);
     });
 
     const unsubPromo = onSnapshot(doc(db, 'settings', 'promotion'), (docSnap) => {
@@ -237,6 +243,8 @@ export default function App() {
       } else {
         setPromotion(null);
       }
+    }, (error) => {
+      console.warn("Firestore [settings/promotion] offline/reconnecting:", error.message);
     });
 
     const productsRef = collection(db, 'products');
@@ -257,6 +265,8 @@ export default function App() {
         })) as Product[];
         setDbProducts(fetchedProducts);
       }
+    }, (error) => {
+      console.warn("Firestore [products] offline/reconnecting:", error.message);
     });
 
     return () => {
