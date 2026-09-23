@@ -137,6 +137,8 @@ export default function App() {
   const [homeTitle, setHomeTitle] = useState('Maná');
   const [homeSubtitle, setHomeSubtitle] = useState('Lanches Saudáveis');
   const [logoUrl, setLogoUrl] = useState('');
+  const [logoAspectRatio, setLogoAspectRatio] = useState<'16:9' | 'auto' | 'square'>('16:9');
+  const [logoScale, setLogoScale] = useState<'md' | 'lg' | 'xl'>('lg');
   const [catalogTitle, setCatalogTitle] = useState('Nosso Catálogo');
   const [catalogSubtitle, setCatalogSubtitle] = useState('Escolha seus lanches e faça seu pedido com facilidade.');
   const [catalogBadge, setCatalogBadge] = useState('Produção limitada');
@@ -202,6 +204,8 @@ export default function App() {
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
         setLogoUrl(data.logoUrl || '');
+        setLogoAspectRatio(data.logoAspectRatio || '16:9');
+        setLogoScale(data.logoScale || 'lg');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
         setCatalogSubtitle(data.catalogSubtitle || 'Escolha seus lanches e faça seu pedido com facilidade.');
         setCatalogBadge(data.catalogBadge || 'Produção limitada');
@@ -625,18 +629,31 @@ export default function App() {
 
       {/* Header */}
       <header className="bg-mana-bg/95 backdrop-blur-sm border-b border-mana-gold/30 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
-          <div className="flex items-center">
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between gap-2 sm:gap-4">
+          <div className="flex items-center min-w-0">
             <Logo 
               customUrl={logoUrl}
               title={homeTitle}
               subtitle={homeSubtitle}
-              className="h-12 sm:h-14 md:h-16 w-auto object-contain select-none py-0.5"
+              aspectRatio={logoAspectRatio}
+              scale={logoScale}
+              className={
+                !logoUrl
+                  ? "h-12 sm:h-14 md:h-16 w-auto object-contain select-none py-0.5"
+                  : logoAspectRatio === '16:9'
+                    ? (logoScale === 'xl' 
+                        ? "h-14 sm:h-18 md:h-22 max-w-[200px] sm:max-w-[280px] md:max-w-[360px] w-auto object-contain select-none py-0.5"
+                        : logoScale === 'md'
+                          ? "h-11 sm:h-13 md:h-16 max-w-[160px] sm:max-w-[220px] md:max-w-[280px] w-auto object-contain select-none py-0.5"
+                          : "h-12 sm:h-16 md:h-20 max-w-[180px] sm:max-w-[260px] md:max-w-[320px] w-auto object-contain select-none py-0.5"
+                      )
+                    : "h-12 sm:h-16 md:h-20 max-w-[180px] sm:max-w-[220px] w-auto object-contain select-none py-0.5"
+              }
               alt="Maná Lanches Saudáveis"
             />
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 shrink-0">
             {user ? (
               <div className="flex items-center gap-3">
                 <span className="text-sm font-medium text-mana-text hidden sm:block">

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check } from 'lucide-react';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye } from 'lucide-react';
 import Logo from './Logo';
 
 interface AdminDashboardProps {
@@ -26,6 +26,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [homeTitle, setHomeTitle] = useState('Maná');
   const [homeSubtitle, setHomeSubtitle] = useState('Lanches Saudáveis');
   const [logoUrl, setLogoUrl] = useState('');
+  const [logoAspectRatio, setLogoAspectRatio] = useState<'16:9' | 'auto' | 'square'>('16:9');
+  const [logoScale, setLogoScale] = useState<'md' | 'lg' | 'xl'>('lg');
+  const [previewBg, setPreviewBg] = useState<'creme' | 'white' | 'dark'>('creme');
   const [catalogTitle, setCatalogTitle] = useState('Nosso Catálogo');
   const [catalogSubtitle, setCatalogSubtitle] = useState('Escolha seus lanches e faça seu pedido com facilidade.');
   const [catalogBadge, setCatalogBadge] = useState('Produção limitada');
@@ -109,6 +112,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
         setLogoUrl(data.logoUrl || '');
+        setLogoAspectRatio(data.logoAspectRatio || '16:9');
+        setLogoScale(data.logoScale || 'lg');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
         setCatalogSubtitle(data.catalogSubtitle || 'Escolha seus lanches e faça seu pedido com facilidade.');
         setCatalogBadge(data.catalogBadge || 'Produção limitada');
@@ -234,6 +239,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         homeTitle,
         homeSubtitle,
         logoUrl,
+        logoAspectRatio,
+        logoScale,
         catalogTitle,
         catalogSubtitle,
         catalogBadge
@@ -2079,12 +2086,17 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       </div>
 
                       {/* Logotipo da Aplicação */}
-                      <div className="md:col-span-2 pt-4 border-t border-mana-gold/20">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                      <div className="md:col-span-2 pt-6 border-t border-mana-gold/20">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                           <div>
-                            <label className="block text-sm font-bold text-mana-green">Logotipo da Aplicação</label>
-                            <p className="text-xs text-mana-text-light">
-                              Cole o link de uma imagem externa ou envie um arquivo (.png, .svg, .jpg, .webp). Deixe vazio para usar a logo oficial do relógio.
+                            <div className="flex items-center gap-2">
+                              <label className="text-base font-bold text-mana-green">Logotipo da Aplicação & Cabeçalho</label>
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                                Suporte a 16:9
+                              </span>
+                            </div>
+                            <p className="text-xs text-mana-text-light mt-0.5">
+                              Envie ou cole a imagem da sua logo. O espaço no cabeçalho foi otimizado especialmente para proporções horizontais 16:9, sem espremer ou distorcer.
                             </p>
                           </div>
                           {logoUrl && (
@@ -2094,29 +2106,34 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                 setLogoUrl('');
                                 showToast("Logo padrão restaurada. Lembre-se de salvar.");
                               }}
-                              className="text-xs text-red-600 hover:text-red-800 font-semibold underline self-start sm:self-auto transition-colors"
+                              className="text-xs text-red-600 hover:text-red-800 font-semibold underline self-start sm:self-auto transition-colors flex items-center gap-1"
                             >
+                              <RotateCcw size={13} />
                               Restaurar Logo Padrão
                             </button>
                           )}
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
-                          <div className="md:col-span-2 space-y-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                          {/* Coluna de Controles (Upload, URL, Formato e Tamanho) */}
+                          <div className="lg:col-span-7 space-y-4">
                             <div>
+                              <label className="block text-xs font-semibold text-mana-text mb-1">
+                                Link direto da imagem (URL externa):
+                              </label>
                               <input
                                 type="text"
                                 value={logoUrl}
                                 onChange={(e) => setLogoUrl(e.target.value)}
-                                placeholder="Cole a URL direta da logo (https://...)"
-                                className="w-full px-4 py-2 text-sm rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                                placeholder="https://exemplo.com/minha-logo-16-9.png"
+                                className="w-full px-4 py-2 text-sm rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white shadow-inner"
                               />
                             </div>
 
                             <div className="flex flex-wrap items-center gap-3">
-                              <label className="relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-mana-gold/40 bg-mana-bg hover:bg-mana-gold/10 text-mana-text font-medium text-xs cursor-pointer transition-colors shadow-sm">
+                              <label className="relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-mana-gold/40 bg-mana-bg hover:bg-mana-gold/15 text-mana-green font-semibold text-xs cursor-pointer transition-colors shadow-sm">
                                 <Upload size={16} className="text-mana-gold" />
-                                <span>Enviar Logo do Computador / Celular</span>
+                                <span>Enviar Imagem (Computador / Celular)</span>
                                 <input
                                   type="file"
                                   accept="image/png,image/jpeg,image/webp,image/svg+xml"
@@ -2124,19 +2141,185 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                   className="sr-only"
                                 />
                               </label>
-                              <span className="text-[11px] text-mana-text-light">PNG transparente, SVG, WebP ou JPG</span>
+                              <span className="text-[11px] text-mana-text-light">
+                                Ideal: 16:9 com fundo transparente (.png, .webp, .svg)
+                              </span>
+                            </div>
+
+                            {/* Seletor de Formato da Logo */}
+                            <div className="pt-2">
+                              <label className="block text-xs font-semibold text-mana-text mb-2">
+                                Formato e Proporção do Logotipo:
+                              </label>
+                              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setLogoAspectRatio('16:9')}
+                                  className={`p-3 rounded-xl border text-left transition-all flex flex-col gap-1.5 ${
+                                    logoAspectRatio === '16:9'
+                                      ? 'border-mana-green bg-mana-green/10 ring-2 ring-mana-green/30'
+                                      : 'border-mana-gold/30 bg-white hover:bg-mana-bg'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-mana-green">16:9 Widescreen</span>
+                                    <span className="text-[10px] font-bold bg-mana-green text-white px-1.5 py-0.5 rounded">
+                                      Amplo
+                                    </span>
+                                  </div>
+                                  <span className="text-[11px] text-mana-text-light leading-tight">
+                                    Espaço horizontal expandido. Ideal para banners, letreiros e logos 16:9.
+                                  </span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setLogoAspectRatio('square')}
+                                  className={`p-3 rounded-xl border text-left transition-all flex flex-col gap-1.5 ${
+                                    logoAspectRatio === 'square'
+                                      ? 'border-mana-green bg-mana-green/10 ring-2 ring-mana-green/30'
+                                      : 'border-mana-gold/30 bg-white hover:bg-mana-bg'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-xs font-bold text-mana-green">Quadrada / Ícone</span>
+                                    <span className="text-[10px] font-medium text-mana-text-light px-1.5 py-0.5 rounded bg-gray-100">
+                                      1:1
+                                    </span>
+                                  </div>
+                                  <span className="text-[11px] text-mana-text-light leading-tight">
+                                    Formato padrão compacto para ícones circulares ou quadrados.
+                                  </span>
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Seletor de Escala / Tamanho no Cabeçalho */}
+                            <div className="pt-1">
+                              <label className="block text-xs font-semibold text-mana-text mb-2">
+                                Tamanho da Logo no Cabeçalho:
+                              </label>
+                              <div className="inline-flex rounded-lg border border-mana-gold/30 bg-white p-1 gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setLogoScale('md')}
+                                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                    logoScale === 'md'
+                                      ? 'bg-mana-green text-white shadow-sm'
+                                      : 'text-mana-text-light hover:text-mana-text'
+                                  }`}
+                                >
+                                  Médio
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setLogoScale('lg')}
+                                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                    logoScale === 'lg'
+                                      ? 'bg-mana-green text-white shadow-sm'
+                                      : 'text-mana-text-light hover:text-mana-text'
+                                  }`}
+                                >
+                                  Grande (Ideal 16:9)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setLogoScale('xl')}
+                                  className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-all ${
+                                    logoScale === 'xl'
+                                      ? 'bg-mana-green text-white shadow-sm'
+                                      : 'text-mana-text-light hover:text-mana-text'
+                                  }`}
+                                >
+                                  Extra Grande
+                                </button>
+                              </div>
                             </div>
                           </div>
 
-                          {/* Prévia da Logo em Tempo Real */}
-                          <div className="flex flex-col items-center justify-center p-3 rounded-xl border border-dashed border-mana-gold/40 bg-mana-bg/60">
-                            <span className="text-[10px] uppercase font-bold text-mana-gold tracking-wider mb-2">Prévia da Logo</span>
-                            <div className="h-16 w-full flex items-center justify-center p-2 bg-white rounded-lg shadow-sm border border-mana-gold/20">
-                              <Logo customUrl={logoUrl} className="h-12 w-auto object-contain select-none" />
+                          {/* Coluna de Prévia Ampla 16:9 em Tempo Real */}
+                          <div className="lg:col-span-5 flex flex-col gap-2">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-1.5">
+                                <Eye size={14} className="text-mana-gold" />
+                                <span className="text-xs uppercase font-bold text-mana-green tracking-wide">
+                                  Prévia no Cabeçalho (16:9)
+                                </span>
+                              </div>
+                              {/* Alternador de Fundo para Testar Transparência */}
+                              <div className="flex items-center gap-1 bg-white border border-mana-gold/30 rounded-lg p-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewBg('creme')}
+                                  title="Fundo Creme Maná"
+                                  className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                                    previewBg === 'creme' ? 'bg-[#FAF7F0] text-mana-green shadow-xs border border-mana-gold/30' : 'text-gray-500'
+                                  }`}
+                                >
+                                  Creme
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewBg('white')}
+                                  title="Fundo Branco"
+                                  className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                                    previewBg === 'white' ? 'bg-white text-gray-900 shadow-xs border border-gray-300' : 'text-gray-500'
+                                  }`}
+                                >
+                                  Branco
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewBg('dark')}
+                                  title="Fundo Escuro"
+                                  className={`px-2 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                                    previewBg === 'dark' ? 'bg-gray-800 text-white shadow-xs' : 'text-gray-500'
+                                  }`}
+                                >
+                                  Escuro
+                                </button>
+                              </div>
                             </div>
-                            <span className="text-[10px] font-medium text-mana-text-light mt-1.5 text-center">
-                              {logoUrl ? '✓ Logo Personalizada Ativa' : '✓ Logo Padrão Oficial Ativa'}
-                            </span>
+
+                            {/* Caixa de Simulação com Proporção 16:9 Ampla */}
+                            <div className={`w-full aspect-[16/9] rounded-2xl border-2 border-dashed border-mana-gold/50 flex flex-col items-center justify-center p-4 relative overflow-hidden transition-colors shadow-sm ${
+                              previewBg === 'creme' ? 'bg-[#FAF7F0]' : previewBg === 'white' ? 'bg-white' : 'bg-gray-900'
+                            }`}>
+                              {/* Badge de Proporção */}
+                              <div className="absolute top-2 left-2.5 bg-black/40 backdrop-blur-xs text-white text-[9px] font-mono font-bold px-1.5 py-0.5 rounded">
+                                16:9 • {logoAspectRatio === '16:9' ? 'Widescreen Ativo' : 'Padrão'}
+                              </div>
+
+                              <div className="w-full h-full flex items-center justify-center p-1">
+                                <Logo 
+                                  customUrl={logoUrl} 
+                                  aspectRatio={logoAspectRatio}
+                                  scale={logoScale}
+                                  className={
+                                    !logoUrl
+                                      ? "h-14 sm:h-16 w-auto object-contain select-none"
+                                      : logoAspectRatio === '16:9'
+                                        ? (logoScale === 'xl'
+                                            ? "h-full max-h-24 w-auto max-w-full object-contain select-none"
+                                            : logoScale === 'md'
+                                              ? "h-full max-h-16 w-auto max-w-full object-contain select-none"
+                                              : "h-full max-h-20 w-auto max-w-full object-contain select-none"
+                                          )
+                                        : "h-14 sm:h-16 w-auto object-contain select-none"
+                                  } 
+                                  alt="Prévia Maná" 
+                                />
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-mana-text-light px-1">
+                              <span>
+                                {logoUrl ? '✓ Logo personalizada configurada' : '✓ Logotipo oficial padrão ativo'}
+                              </span>
+                              <span className="font-medium text-mana-gold">
+                                {logoAspectRatio === '16:9' ? 'Área ampla 16:9 liberada' : 'Área 1:1'}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>

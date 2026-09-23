@@ -33,6 +33,14 @@ export interface LogoProps {
    * Texto alternativo para leitores de tela e acessibilidade
    */
   alt?: string;
+  /**
+   * Proporção esperada da logo (16:9, auto ou square)
+   */
+  aspectRatio?: '16:9' | 'square' | 'auto';
+  /**
+   * Escala da logo
+   */
+  scale?: 'sm' | 'md' | 'lg' | 'xl';
 }
 
 export const Logo: React.FC<LogoProps> = ({
@@ -42,6 +50,8 @@ export const Logo: React.FC<LogoProps> = ({
   className = 'h-12 sm:h-14 md:h-16 w-auto select-none',
   variant = 'full',
   alt = 'Maná Lanches Saudáveis',
+  aspectRatio,
+  scale,
 }) => {
   const [imgError, setImgError] = useState(false);
 
@@ -52,11 +62,12 @@ export const Logo: React.FC<LogoProps> = ({
 
   // Se houver uma URL customizada configurada pelo admin e ela não falhou
   if (customUrl && !imgError) {
+    const isWidescreen = aspectRatio === '16:9';
     return (
       <img
         src={customUrl}
         alt={alt}
-        className={`${className} object-contain select-none transition-transform duration-300 hover:scale-105`}
+        className={`${className} ${isWidescreen ? 'aspect-[16/9]' : ''} object-contain select-none transition-transform duration-300 hover:scale-105`}
         loading="eager"
         decoding="async"
         onError={() => setImgError(true)}

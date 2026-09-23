@@ -152,7 +152,7 @@ export const CareGuide: React.FC<CareGuideProps> = ({
               <Logo 
                 customUrl={logoUrl} 
                 title={homeTitle} 
-                className="h-16 sm:h-20 w-auto object-contain select-none" 
+                className="h-16 sm:h-20 md:h-24 w-auto max-w-[220px] sm:max-w-[280px] object-contain select-none" 
               />
             </div>
 
