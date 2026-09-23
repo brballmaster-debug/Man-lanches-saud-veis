@@ -1,0 +1,143 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 500" fill="none">
+  <defs>
+    <linearGradient id="favGoldClockGrad" x1="15%" y1="10%" x2="85%" y2="90%">
+      <stop offset="0%" stop-color="#C5A666" />
+      <stop offset="25%" stop-color="#DFCB99" />
+      <stop offset="50%" stop-color="#C1A05A" />
+      <stop offset="75%" stop-color="#E9DBB4" />
+      <stop offset="100%" stop-color="#9E7E3C" />
+    </linearGradient>
+
+    <linearGradient id="favGoldDetail" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#D8C28E" />
+      <stop offset="50%" stop-color="#BE9E5A" />
+      <stop offset="100%" stop-color="#9C7B38" />
+    </linearGradient>
+
+    <linearGradient id="favManaGreen" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#557F2B" />
+      <stop offset="45%" stop-color="#42651F" />
+      <stop offset="100%" stop-color="#2D4814" />
+    </linearGradient>
+
+    <linearGradient id="favLeafGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3C611C" />
+      <stop offset="50%" stop-color="#5D922E" />
+      <stop offset="100%" stop-color="#7EB942" />
+    </linearGradient>
+  </defs>
+
+  <!-- Fundo suave circular para destaque no navegador -->
+  <circle cx="250" cy="250" r="235" fill="#FDFBF7" />
+
+  <!-- Arco do Relógio Superior -->
+  <path d="M 112 230 A 150 150 0 0 1 388 230" stroke="url(#favGoldClockGrad)" stroke-width="8" stroke-linecap="round" fill="none" />
+  
+  <!-- Marcador 12h -->
+  <line x1="250" y1="90" x2="250" y2="114" stroke="url(#favGoldDetail)" stroke-width="6" stroke-linecap="round" />
+  <line x1="197" y1="106" x2="204" y2="123" stroke="url(#favGoldDetail)" stroke-width="4.5" stroke-linecap="round" />
+  <line x1="303" y1="106" x2="296" y2="123" stroke="url(#favGoldDetail)" stroke-width="4.5" stroke-linecap="round" />
+
+  <!-- Ponteiros e Centro -->
+  <g transform="translate(250, 226)">
+    <line x1="0" y1="0" x2="0" y2="-52" stroke="url(#favGoldDetail)" stroke-width="6" stroke-linecap="round" />
+    <line x1="0" y1="0" x2="34" y2="-28" stroke="url(#favGoldDetail)" stroke-width="6" stroke-linecap="round" />
+    <circle cx="0" cy="0" r="11" fill="url(#favGoldClockGrad)" />
+  </g>
+
+  <!-- Caligrafia Maná -->
+  <path 
+    d="M 94 250 
+       C 88 238 98 230 110 232 
+       C 126 235 131 254 128 274 
+       C 125 292 118 300 112 300 
+       C 107 300 106 295 110 280 
+       C 116 256 123 234 135 234 
+       C 145 234 148 248 147 266 
+       C 145 284 142 296 142 296
+       C 142 296 154 246 168 238 
+       C 178 232 186 238 184 254 
+       C 181 274 177 288 174 296 
+       C 172 301 176 303 182 298
+       C 188 293 194 284 198 274" 
+    fill="none" 
+    stroke="url(#favManaGreen)" 
+    stroke-width="20" 
+    stroke-linecap="round" 
+    stroke-linejoin="round" 
+  />
+
+  <path 
+    d="M 235 258 
+       C 230 245 212 242 202 254 
+       C 192 266 193 286 206 297 
+       C 217 304 233 298 236 284
+       L 236 296
+       C 236 300 242 302 248 296
+       C 255 289 259 278 261 268" 
+    fill="none" 
+    stroke="url(#favManaGreen)" 
+    stroke-width="18" 
+    stroke-linecap="round" 
+    stroke-linejoin="round" 
+  />
+  <path d="M 233 260 C 233 250 216 248 207 260 C 197 272 198 288 209 294 C 219 299 233 292 233 276 Z" fill="url(#favManaGreen)" />
+
+  <path 
+    d="M 261 270 
+       C 265 256 270 245 279 245 
+       C 287 245 289 255 286 270 
+       L 282 296 
+       M 284 266 
+       C 290 252 301 245 311 246 
+       C 321 248 322 258 319 274 
+       L 315 296 
+       C 314 300 320 302 326 296
+       C 334 288 338 276 341 266" 
+    fill="none" 
+    stroke="url(#favManaGreen)" 
+    stroke-width="18" 
+    stroke-linecap="round" 
+    stroke-linejoin="round" 
+  />
+
+  <path 
+    d="M 374 258 
+       C 369 245 351 242 341 254 
+       C 331 266 332 286 345 297 
+       C 356 304 372 298 375 284
+       L 375 296
+       C 375 301 384 304 394 297
+       C 404 290 412 278 418 266" 
+    fill="none" 
+    stroke="url(#favManaGreen)" 
+    stroke-width="18" 
+    stroke-linecap="round" 
+    stroke-linejoin="round" 
+  />
+  <path d="M 372 260 C 372 250 355 248 346 260 C 336 272 337 288 348 294 C 358 299 372 292 372 276 Z" fill="url(#favManaGreen)" />
+
+  <!-- Folha sobre o 'á' -->
+  <g transform="translate(384, 216) rotate(-22)">
+    <path d="M 0 28 C -16 18 -22 2 0 -26 C 22 2 16 18 0 28 Z" fill="url(#favLeafGrad)" />
+    <path d="M 0 26 C 0 8 0 -6 0 -22" stroke="#284410" stroke-width="2" stroke-linecap="round" />
+  </g>
+
+  <!-- Subtítulo -->
+  <text 
+    x="250" 
+    y="336" 
+    text-anchor="middle" 
+    font-family="'Inter', system-ui, sans-serif" 
+    font-size="22" 
+    font-weight="700" 
+    letter-spacing="0.20em" 
+    fill="#525E43"
+  >
+    LANCHES SAUDÁVEIS
+  </text>
+
+  <!-- Arco inferior -->
+  <path d="M 160 365 A 150 150 0 0 0 340 365" stroke="url(#favGoldClockGrad)" stroke-width="8" stroke-linecap="round" fill="none" />
+  <line x1="250" y1="372" x2="250" y2="390" stroke="url(#favGoldDetail)" stroke-width="6" stroke-linecap="round" />
+</svg>

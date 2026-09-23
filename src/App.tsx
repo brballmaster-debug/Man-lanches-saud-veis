@@ -13,6 +13,7 @@ import { doc, onSnapshot, runTransaction, collection, serverTimestamp, getDoc, s
 import OrderHistory from './components/OrderHistory';
 import AdminDashboard from './components/AdminDashboard';
 import AuthModal from './components/AuthModal';
+import Logo from './components/Logo';
 
 const DELIVERY_SLOTS = [
   '13:00', '13:15', '13:30', '13:45',
@@ -133,6 +134,7 @@ export default function App() {
   const [freeShippingThreshold, setFreeShippingThreshold] = useState(50.00);
   const [homeTitle, setHomeTitle] = useState('Maná');
   const [homeSubtitle, setHomeSubtitle] = useState('Lanches Saudáveis');
+  const [logoUrl, setLogoUrl] = useState('');
   const [catalogTitle, setCatalogTitle] = useState('Nosso Catálogo');
   const [catalogSubtitle, setCatalogSubtitle] = useState('Escolha seus lanches e faça seu pedido com facilidade.');
   const [catalogBadge, setCatalogBadge] = useState('Produção limitada');
@@ -197,6 +199,7 @@ export default function App() {
         setPickUpHours(data.pickUpHours || '17:30 às 19:00');
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
+        setLogoUrl(data.logoUrl || '');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
         setCatalogSubtitle(data.catalogSubtitle || 'Escolha seus lanches e faça seu pedido com facilidade.');
         setCatalogBadge(data.catalogBadge || 'Produção limitada');
@@ -619,33 +622,16 @@ export default function App() {
       )}
 
       {/* Header */}
-      <header className="bg-mana-bg border-b border-mana-gold/30 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img 
-              src="/logo.png" 
-              alt="Maná Logo" 
-              className="w-12 h-12 object-contain"
-              onError={(e) => {
-                // Fallback if logo.png doesn't exist
-                e.currentTarget.style.display = 'none';
-                e.currentTarget.nextElementSibling?.classList.remove('hidden');
-              }}
+      <header className="bg-mana-bg/95 backdrop-blur-sm border-b border-mana-gold/30 sticky top-0 z-10 shadow-sm">
+        <div className="max-w-4xl mx-auto px-4 py-3 sm:py-4 flex items-center justify-between">
+          <div className="flex items-center">
+            <Logo 
+              customUrl={logoUrl}
+              title={homeTitle}
+              subtitle={homeSubtitle}
+              className="h-12 sm:h-14 md:h-16 w-auto object-contain select-none py-0.5"
+              alt="Maná Lanches Saudáveis"
             />
-            <div className="hidden flex items-center gap-2">
-              <div className="relative w-10 h-10 flex items-center justify-center rounded-full border border-mana-gold text-mana-gold">
-                <Clock size={20} />
-                <Leaf size={12} className="absolute -top-1 -right-1 text-mana-green fill-mana-green" />
-              </div>
-              <div className="flex flex-col">
-                <h1 className="font-serif text-3xl font-bold text-mana-green leading-none tracking-tight">
-                  {homeTitle}
-                </h1>
-                <span className="text-[10px] font-semibold tracking-widest text-mana-text uppercase mt-1">
-                  {homeSubtitle}
-                </span>
-              </div>
-            </div>
           </div>
           
           <div className="flex items-center gap-4">

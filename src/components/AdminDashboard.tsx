@@ -3,6 +3,7 @@ import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getD
 import { db } from '../firebase';
 import { Order, UserDocument, Product, InfoSection } from '../types';
 import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown } from 'lucide-react';
+import Logo from './Logo';
 
 interface AdminDashboardProps {
   onClose: () => void;
@@ -24,6 +25,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [freeShippingThreshold, setFreeShippingThreshold] = useState(50.00);
   const [homeTitle, setHomeTitle] = useState('Maná');
   const [homeSubtitle, setHomeSubtitle] = useState('Lanches Saudáveis');
+  const [logoUrl, setLogoUrl] = useState('');
   const [catalogTitle, setCatalogTitle] = useState('Nosso Catálogo');
   const [catalogSubtitle, setCatalogSubtitle] = useState('Escolha seus lanches e faça seu pedido com facilidade.');
   const [catalogBadge, setCatalogBadge] = useState('Produção limitada');
@@ -103,6 +105,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setDeliveryHours(data.deliveryHours || '13:00 às 19:00');
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
+        setLogoUrl(data.logoUrl || '');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
         setCatalogSubtitle(data.catalogSubtitle || 'Escolha seus lanches e faça seu pedido com facilidade.');
         setCatalogBadge(data.catalogBadge || 'Produção limitada');
@@ -211,6 +214,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         freeShippingThreshold,
         homeTitle,
         homeSubtitle,
+        logoUrl,
         catalogTitle,
         catalogSubtitle,
         catalogBadge
@@ -390,6 +394,55 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           ctx.drawImage(img, 0, 0, width, height);
           const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
           setSpecialImageUrl(dataUrl);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Se for arquivo vetorial SVG, lê direto como Data URL mantendo nitidez infinita
+    if (file.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          setLogoUrl(event.target.result as string);
+          showToast("Logo vetorial (SVG) carregada com sucesso!");
+        }
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
+
+    // Para PNG/WebP/JPEG, redimensiona se for muito grande e salva como PNG com transparência
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const MAX_DIMENSION = 600;
+        if (width > height && width > MAX_DIMENSION) {
+          height *= MAX_DIMENSION / width;
+          width = MAX_DIMENSION;
+        } else if (height > MAX_DIMENSION) {
+          width *= MAX_DIMENSION / height;
+          height = MAX_DIMENSION;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/png');
+          setLogoUrl(dataUrl);
+          showToast("Logo carregada com sucesso!");
         }
       };
       img.src = event.target?.result as string;
@@ -656,12 +709,13 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         {/* Header */}
         <div className="px-4 py-4 sm:px-6 sm:py-5 border-b border-mana-gold/20 flex items-center justify-between bg-white sticky top-0 z-10">
           <div className="flex items-center gap-3">
-            <div className="bg-mana-green/10 p-2 rounded-lg text-mana-green hidden sm:block">
-              <Settings size={20} />
+            <Logo customUrl={logoUrl} variant="icon" className="h-9 w-9 select-none" alt="Maná Lanches Saudáveis" />
+            <div>
+              <h2 className="font-serif text-xl sm:text-2xl font-bold text-mana-green leading-tight">
+                Painel Administrativo
+              </h2>
+              <p className="text-xs text-mana-text-light hidden sm:block">Maná Lanches Saudáveis</p>
             </div>
-            <h2 className="font-serif text-xl sm:text-2xl font-bold text-mana-green">
-              Painel Administrativo
-            </h2>
           </div>
           <button 
             onClick={onClose}
@@ -1614,58 +1668,6 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                     </div>
                   </div>
 
-                  {/* Personalização da Página Inicial */}
-                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
-                    <h3 className="font-serif text-xl font-bold text-mana-green mb-4">Personalização da Página Inicial</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Título do Header (Maná)</label>
-                        <input
-                          type="text"
-                          value={homeTitle}
-                          onChange={(e) => setHomeTitle(e.target.value)}
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Subtítulo do Header</label>
-                        <input
-                          type="text"
-                          value={homeSubtitle}
-                          onChange={(e) => setHomeSubtitle(e.target.value)}
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Título do Catálogo</label>
-                        <input
-                          type="text"
-                          value={catalogTitle}
-                          onChange={(e) => setCatalogTitle(e.target.value)}
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Subtítulo do Catálogo</label>
-                        <input
-                          type="text"
-                          value={catalogSubtitle}
-                          onChange={(e) => setCatalogSubtitle(e.target.value)}
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Etiqueta do Catálogo (Ex: Produção limitada)</label>
-                        <input
-                          type="text"
-                          value={catalogBadge}
-                          onChange={(e) => setCatalogBadge(e.target.value)}
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
                   {/* Banner de Informações da Entrega */}
                   <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
                     <h3 className="font-serif text-xl font-bold text-mana-green mb-4">Banner de Informações da Entrega</h3>
@@ -1936,6 +1938,138 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
 
               {activeTab === 'settings' && (
                 <div className="space-y-6 animate-in fade-in duration-500">
+                  {/* Personalização da Página Inicial e Identidade Visual */}
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <h3 className="font-serif text-xl font-bold text-mana-green">Personalização da Loja & Identidade Visual</h3>
+                        <p className="text-xs text-mana-text-light mt-1">Configure os textos de apresentação da loja, catálogo e logotipo oficial.</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-mana-text mb-1">Título do Header (Maná)</label>
+                        <input
+                          type="text"
+                          value={homeTitle}
+                          onChange={(e) => setHomeTitle(e.target.value)}
+                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-mana-text mb-1">Subtítulo do Header</label>
+                        <input
+                          type="text"
+                          value={homeSubtitle}
+                          onChange={(e) => setHomeSubtitle(e.target.value)}
+                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-mana-text mb-1">Título do Catálogo</label>
+                        <input
+                          type="text"
+                          value={catalogTitle}
+                          onChange={(e) => setCatalogTitle(e.target.value)}
+                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-mana-text mb-1">Subtítulo do Catálogo</label>
+                        <input
+                          type="text"
+                          value={catalogSubtitle}
+                          onChange={(e) => setCatalogSubtitle(e.target.value)}
+                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-mana-text mb-1">Etiqueta do Catálogo (Ex: Produção limitada)</label>
+                        <input
+                          type="text"
+                          value={catalogBadge}
+                          onChange={(e) => setCatalogBadge(e.target.value)}
+                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                        />
+                      </div>
+
+                      {/* Logotipo da Aplicação */}
+                      <div className="md:col-span-2 pt-4 border-t border-mana-gold/20">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+                          <div>
+                            <label className="block text-sm font-bold text-mana-green">Logotipo da Aplicação</label>
+                            <p className="text-xs text-mana-text-light">
+                              Cole o link de uma imagem externa ou envie um arquivo (.png, .svg, .jpg, .webp). Deixe vazio para usar a logo oficial do relógio.
+                            </p>
+                          </div>
+                          {logoUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLogoUrl('');
+                                showToast("Logo padrão restaurada. Lembre-se de salvar.");
+                              }}
+                              className="text-xs text-red-600 hover:text-red-800 font-semibold underline self-start sm:self-auto transition-colors"
+                            >
+                              Restaurar Logo Padrão
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+                          <div className="md:col-span-2 space-y-3">
+                            <div>
+                              <input
+                                type="text"
+                                value={logoUrl}
+                                onChange={(e) => setLogoUrl(e.target.value)}
+                                placeholder="Cole a URL direta da logo (https://...)"
+                                className="w-full px-4 py-2 text-sm rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                              />
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3">
+                              <label className="relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-mana-gold/40 bg-mana-bg hover:bg-mana-gold/10 text-mana-text font-medium text-xs cursor-pointer transition-colors shadow-sm">
+                                <Upload size={16} className="text-mana-gold" />
+                                <span>Enviar Logo do Computador / Celular</span>
+                                <input
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                  onChange={handleLogoUpload}
+                                  className="sr-only"
+                                />
+                              </label>
+                              <span className="text-[11px] text-mana-text-light">PNG transparente, SVG, WebP ou JPG</span>
+                            </div>
+                          </div>
+
+                          {/* Prévia da Logo em Tempo Real */}
+                          <div className="flex flex-col items-center justify-center p-3 rounded-xl border border-dashed border-mana-gold/40 bg-mana-bg/60">
+                            <span className="text-[10px] uppercase font-bold text-mana-gold tracking-wider mb-2">Prévia da Logo</span>
+                            <div className="h-16 w-full flex items-center justify-center p-2 bg-white rounded-lg shadow-sm border border-mana-gold/20">
+                              <Logo customUrl={logoUrl} className="h-12 w-auto object-contain select-none" />
+                            </div>
+                            <span className="text-[10px] font-medium text-mana-text-light mt-1.5 text-center">
+                              {logoUrl ? '✓ Logo Personalizada Ativa' : '✓ Logo Padrão Oficial Ativa'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t border-mana-gold/20 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={saveWhatsappNumber}
+                        className="bg-mana-green hover:bg-mana-green-dark text-white px-6 py-2.5 rounded-xl font-bold transition-all shadow-md shadow-mana-green/20 flex items-center gap-2 text-sm"
+                      >
+                        <CheckCircle size={18} />
+                        <span>Salvar Personalização</span>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Danger Zone moved to bottom of settings */}
                   <div className="bg-white rounded-xl p-6 shadow-sm border border-red-100">
                     <h3 className="font-serif text-xl font-bold text-red-600 mb-4 flex items-center gap-2">
@@ -1956,6 +2090,18 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  {/* Floating Save Button */}
+                  <div className="fixed bottom-8 right-8 z-50">
+                    <button
+                      onClick={saveWhatsappNumber}
+                      className="bg-mana-green hover:bg-mana-green-dark text-white p-4 rounded-full shadow-2xl flex items-center gap-2 transition-all transform hover:scale-105"
+                      title="Salvar todas as configurações desta aba"
+                    >
+                      <CheckCircle size={24} />
+                      <span className="font-bold pr-2">Salvar Configurações</span>
+                    </button>
                   </div>
                 </div>
               )}
