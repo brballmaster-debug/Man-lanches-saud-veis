@@ -76,24 +76,55 @@ export default function App() {
   const [showOrderHistory, setShowOrderHistory] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showCareGuide, setShowCareGuide] = useState(false);
+  const [showCareGuide, setShowCareGuide] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const hash = window.location.hash.toLowerCase();
+      const tab = (params.get('tab') || '').toLowerCase();
+      return (
+        tab === 'guia' ||
+        tab === 'guide' ||
+        params.get('guia') === '1' ||
+        params.get('guia') === 'true' ||
+        params.get('guide') === '1' ||
+        params.get('guide') === 'true' ||
+        params.has('guia') ||
+        params.has('guide') ||
+        hash === '#guia' ||
+        hash === '#guide' ||
+        hash === '#guia-preparo' ||
+        hash === '#guiadepreparo'
+      );
+    } catch {
+      return false;
+    }
+  });
   const [slotCounts, setSlotCounts] = useState<Record<string, number>>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const MAX_ORDERS_PER_SLOT = 1; // Limite de pedidos por horário
 
-  // Suporte a Deep Link (Abertura automática via QR Code ou link compartilhado)
+  // Suporte a Deep Link (Abertura automática via QR Code ou link compartilhado em tempo real)
   useEffect(() => {
     const checkDeepLinks = () => {
       try {
         const params = new URLSearchParams(window.location.search);
+        const hash = window.location.hash.toLowerCase();
+        const tab = (params.get('tab') || '').toLowerCase();
         const isGuide = 
-          params.get('tab') === 'guia' || 
-          params.get('tab') === 'guide' || 
+          tab === 'guia' || 
+          tab === 'guide' || 
           params.get('guia') === '1' || 
           params.get('guia') === 'true' || 
-          window.location.hash === '#guia' ||
-          window.location.hash === '#guia-preparo';
+          params.get('guide') === '1' || 
+          params.get('guide') === 'true' || 
+          params.has('guia') ||
+          params.has('guide') ||
+          hash === '#guia' ||
+          hash === '#guide' ||
+          hash === '#guia-preparo' ||
+          hash === '#guiadepreparo';
 
         if (isGuide) {
           setShowCareGuide(true);
