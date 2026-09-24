@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData, Coupon, defaultCoupons } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, MoreHorizontal, ChevronDown, Smartphone, Tag } from 'lucide-react';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode } from 'lucide-react';
 import Logo from './Logo';
 import CouponManager from './CouponManager';
+import CareGuideQrModal from './CareGuideQrModal';
 
 interface AdminDashboardProps {
   onClose: () => void;
@@ -217,6 +218,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
   const [guideCardToDelete, setGuideCardToDelete] = useState<CareGuideItem | null>(null);
   const [savingCareGuide, setSavingCareGuide] = useState(false);
+  const [showCareGuideQr, setShowCareGuideQr] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
   
   // Estados de Compressão de Imagens via Canvas
@@ -3281,6 +3283,16 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                     <div className="flex flex-wrap items-center gap-2">
                       <button
                         type="button"
+                        onClick={() => setShowCareGuideQr(true)}
+                        className="px-4 py-2 text-xs font-semibold text-[#2B4A28] bg-white border border-[#2B4A28]/30 hover:bg-[#FAF7F0] rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        title="Gerar e baixar o QR Code para embalagens e etiquetas"
+                      >
+                        <QrCode size={15} />
+                        <span>QR Code de Embalagem</span>
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={handleResetGuideToDefault}
                         className="px-4 py-2 text-xs font-semibold text-mana-text-light hover:text-mana-text bg-gray-100 hover:bg-gray-200 rounded-xl transition-colors flex items-center gap-1.5"
                         title="Restaura os dados originais do encarte"
@@ -3299,6 +3311,31 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                         <span>{savingCareGuide ? 'Salvando...' : 'Salvar Guia'}</span>
                       </button>
                     </div>
+                  </div>
+
+                  {/* Bloco de Destaque: QR Code de Embalagem */}
+                  <div className="bg-[#FAF7F0] border border-[#DDD3C1] rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-start sm:items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-[#2B4A28] text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <QrCode size={24} />
+                      </div>
+                      <div>
+                        <h4 className="font-serif font-bold text-[#20371E] text-base">
+                          QR Code para Embalagens, Etiquetas e Folhetos
+                        </h4>
+                        <p className="text-xs sm:text-sm text-stone-600 mt-0.5 max-w-xl">
+                          Gere o QR Code de alta resolução com o link direto da página de preparo para estampar em adesivos de potes, tags térmicas ou folhetos de entrega.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCareGuideQr(true)}
+                      className="bg-[#2B4A28] hover:bg-[#20371E] active:scale-[0.98] text-white px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md shadow-[#2B4A28]/20 flex items-center gap-2 shrink-0 cursor-pointer"
+                    >
+                      <QrCode size={16} />
+                      <span>Visualizar & Baixar PNG</span>
+                    </button>
                   </div>
 
                   {/* Bloco 1: Textos do Cabeçalho e Introdução */}
@@ -4177,6 +4214,13 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal do QR Code do Guia de Preparo */}
+      {showCareGuideQr && (
+        <CareGuideQrModal
+          onClose={() => setShowCareGuideQr(false)}
+        />
       )}
     </div>
   );

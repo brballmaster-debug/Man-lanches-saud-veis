@@ -82,6 +82,36 @@ export default function App() {
   const [isAuthReady, setIsAuthReady] = useState(false);
   const MAX_ORDERS_PER_SLOT = 1; // Limite de pedidos por horário
 
+  // Suporte a Deep Link (Abertura automática via QR Code ou link compartilhado)
+  useEffect(() => {
+    const checkDeepLinks = () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const isGuide = 
+          params.get('tab') === 'guia' || 
+          params.get('tab') === 'guide' || 
+          params.get('guia') === '1' || 
+          params.get('guia') === 'true' || 
+          window.location.hash === '#guia' ||
+          window.location.hash === '#guia-preparo';
+
+        if (isGuide) {
+          setShowCareGuide(true);
+        }
+      } catch (e) {
+        // Ignora silenciosamente
+      }
+    };
+
+    checkDeepLinks();
+    window.addEventListener('hashchange', checkDeepLinks);
+    window.addEventListener('popstate', checkDeepLinks);
+    return () => {
+      window.removeEventListener('hashchange', checkDeepLinks);
+      window.removeEventListener('popstate', checkDeepLinks);
+    };
+  }, []);
+
   useEffect(() => {
     let isInitialLoad = true;
 

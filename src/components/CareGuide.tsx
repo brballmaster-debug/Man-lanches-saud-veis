@@ -10,12 +10,14 @@ import {
   Check, 
   Heart, 
   Instagram, 
-  BookOpen
+  BookOpen,
+  QrCode
 } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CareGuideData, CareGuideItem, defaultCareGuideData } from '../types';
 import { Logo } from './Logo';
+import CareGuideQrModal from './CareGuideQrModal';
 
 export interface CareGuideProps {
   onClose: () => void;
@@ -99,6 +101,7 @@ export const CareGuide: React.FC<CareGuideProps> = ({
   homeTitle = 'Maná'
 }) => {
   const [data, setData] = useState<CareGuideData>(defaultCareGuideData);
+  const [showQrModal, setShowQrModal] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'care_guide'), (docSnap) => {
@@ -121,19 +124,30 @@ export const CareGuide: React.FC<CareGuideProps> = ({
 
   return (
     <div className="fixed inset-0 z-30 pb-16 sm:pb-0 bg-[#F4EFE6] overflow-y-auto font-sans antialiased text-[#333333] animate-in fade-in duration-300">
-      {/* Botão Superior Fixo de Voltar */}
-      <div className="sticky top-0 z-30 bg-[#F4EFE6]/95 backdrop-blur-md border-b border-[#D8CEBC]/60 px-4 py-2.5 flex items-center justify-between">
+      {/* Botão Superior Fixo de Voltar e Ações */}
+      <div className="sticky top-0 z-30 bg-[#F4EFE6]/95 backdrop-blur-md border-b border-[#D8CEBC]/60 px-4 py-2.5 flex items-center justify-between gap-2">
         <button
           onClick={onClose}
-          className="inline-flex items-center gap-2 bg-[#2B4A28] hover:bg-[#20371E] text-white px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm hover:shadow"
+          className="inline-flex items-center gap-2 bg-[#2B4A28] hover:bg-[#20371E] text-white px-3.5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm hover:shadow shrink-0 cursor-pointer"
         >
           <ArrowLeft size={16} />
-          <span>Voltar ao Catálogo</span>
+          <span className="hidden xs:inline">Voltar ao Catálogo</span>
+          <span className="xs:hidden">Voltar</span>
         </button>
 
-        <span className="text-xs font-serif font-bold text-[#4B5E3C] tracking-wide uppercase">
+        <span className="text-xs font-serif font-bold text-[#4B5E3C] tracking-wide uppercase truncate text-center hidden md:inline">
           Guia de Conservação & Preparo
         </span>
+
+        <button
+          type="button"
+          onClick={() => setShowQrModal(true)}
+          className="inline-flex items-center gap-1.5 bg-white hover:bg-[#F0EAE1] text-[#2B4A28] border border-[#2B4A28]/30 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-xs shrink-0 cursor-pointer"
+          title="Obter QR Code do Guia de Preparo para embalagens e adesivos"
+        >
+          <QrCode size={16} />
+          <span>QR Code</span>
+        </button>
       </div>
 
       {/* Conteúdo Central inspirado exatamente no folheto */}
@@ -436,6 +450,15 @@ export const CareGuide: React.FC<CareGuideProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Modal do QR Code com opção de download PNG e impressão de tag */}
+      {showQrModal && (
+        <CareGuideQrModal
+          onClose={() => setShowQrModal(false)}
+          homeTitle={homeTitle}
+          logoUrl={logoUrl}
+        />
+      )}
     </div>
   );
 };
