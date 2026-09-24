@@ -120,7 +120,7 @@ export const CareGuide: React.FC<CareGuideProps> = ({
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#F4EFE6] overflow-y-auto font-sans antialiased text-[#333333] animate-in fade-in duration-300">
+    <div className="fixed inset-0 z-30 pb-16 sm:pb-0 bg-[#F4EFE6] overflow-y-auto font-sans antialiased text-[#333333] animate-in fade-in duration-300">
       {/* Botão Superior Fixo de Voltar */}
       <div className="sticky top-0 z-30 bg-[#F4EFE6]/95 backdrop-blur-md border-b border-[#D8CEBC]/60 px-4 py-2.5 flex items-center justify-between">
         <button
@@ -137,7 +137,7 @@ export const CareGuide: React.FC<CareGuideProps> = ({
       </div>
 
       {/* Conteúdo Central inspirado exatamente no folheto */}
-      <div className="max-w-4xl mx-auto px-4 py-6 sm:py-10">
+      <div className="max-w-4xl mx-auto px-4 py-6 sm:py-10 pb-24 sm:pb-12">
         <div className="bg-[#FAF7F0] border border-[#DDD3C1] rounded-[28px] p-5 sm:p-8 md:p-10 shadow-lg relative overflow-hidden">
           
           {/* Folhas decorativas nos cantos */}

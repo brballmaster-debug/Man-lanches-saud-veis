@@ -28,6 +28,19 @@
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
+          // Em ambiente de desenvolvimento (localhost ou ais-dev-), remove Service Workers e caches antigos para prevenir conflitos de módulos/hooks
+          if (window.location.hostname === 'localhost' || window.location.hostname.includes('ais-dev-')) {
+            navigator.serviceWorker.getRegistrations().then(registrations => {
+              for (const reg of registrations) {
+                reg.unregister();
+              }
+            });
+            if ('caches' in window) {
+              caches.keys().then(keys => keys.forEach(key => caches.delete(key)));
+            }
+            return;
+          }
+
           navigator.serviceWorker.register('/sw.js')
             .then(reg => {
               // Auto-update: detecta novas versões do Service Worker

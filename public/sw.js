@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mana-lanches-v5';
+const CACHE_NAME = 'mana-lanches-v6';
 
 // Recursos essenciais para inicialização imediata da casca (App Shell)
 const STATIC_ASSETS = [
@@ -41,19 +41,54 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // REGRA DE SEGURANÇA: ignora chamadas do Firebase, Firestore, Auth e métodos que não sejam GET
+  // Não intercepta requisições não-GET
+  if (request.method !== 'GET') {
+    return;
+  }
+
+  // REGRA DE SEGURANÇA: ignora chamadas do Firebase, Firestore, Auth e Google APIs
   if (
-    request.method !== 'GET' ||
     url.origin.includes('firestore.googleapis.com') ||
     url.origin.includes('firebase') ||
     url.origin.includes('identitytoolkit') ||
     url.origin.includes('securetoken.googleapis.com') ||
     url.origin.includes('googleapis.com')
   ) {
-    return; // Deixa o navegador/SDK do Firebase gerenciar diretamente pela rede
+    return; // Deixa o SDK do Firebase gerenciar diretamente pela rede
   }
 
-  // Estratégia Stale-While-Revalidate para arquivos estáticos (HTML, JS, CSS, imagens locais)
+  // REGRA CRÍTICA PARA VITE / DESENVOLVIMENTO:
+  // Nunca cacheia módulos dinâmicos do Vite para evitar conflitos de instâncias do React / hooks
+  if (
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/@') ||
+    url.pathname.includes('/node_modules/') ||
+    url.search.includes('v=') ||
+    url.search.includes('import') ||
+    url.search.includes('t=') ||
+    url.hostname === 'localhost' ||
+    url.hostname.includes('ais-dev-')
+  ) {
+    return;
+  }
+
+  // Navegação (HTML principal): Network-First para garantir que scripts e hashes estejam sempre atualizados
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseClone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(request, responseClone));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match('/'))
+    );
+    return;
+  }
+
+  // Estratégia Stale-While-Revalidate para arquivos estáticos em produção (imagens, manifest, assets)
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.match(request).then((cachedResponse) => {

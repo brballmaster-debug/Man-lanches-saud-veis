@@ -64,7 +64,7 @@ export default function OrderHistory({ onClose }: OrderHistoryProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-30 pb-16 sm:pb-0 flex justify-end">
       <div 
         className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity"
         onClick={onClose}
@@ -83,7 +83,7 @@ export default function OrderHistory({ onClose }: OrderHistoryProps) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5">
+        <div className="flex-1 overflow-y-auto p-5 pb-24 sm:pb-8">
           {auth.currentUser?.isAnonymous && (
             <div className="mb-6 p-4 bg-mana-gold/10 border border-mana-gold/20 rounded-xl text-sm text-mana-text-light">
               <p className="font-semibold text-mana-green mb-1">Atenção Visitante</p>

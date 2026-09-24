@@ -14,6 +14,7 @@ export default defineConfig(({mode}) => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+      dedupe: ['react', 'react-dom'],
     },
     build: {
       target: 'esnext',
@@ -25,13 +26,17 @@ export default defineConfig(({mode}) => {
             if (id.includes('node_modules/firebase') || id.includes('node_modules/@firebase')) {
               return 'vendor-firebase';
             }
-            // Separa React e dependências de núcleo
-            if (id.includes('node_modules/react') || id.includes('node_modules/react-dom') || id.includes('node_modules/scheduler')) {
-              return 'vendor-react';
-            }
             // Separa bibliotecas de ícones se existirem (ex: lucide-react)
             if (id.includes('node_modules/lucide-react')) {
               return 'vendor-icons';
+            }
+            // Separa React e dependências de núcleo estritamente
+            if (
+              id.includes('node_modules/react/') ||
+              id.includes('node_modules/react-dom/') ||
+              id.includes('node_modules/scheduler/')
+            ) {
+              return 'vendor-react';
             }
           },
         },

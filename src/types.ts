@@ -10,6 +10,9 @@ export interface Product {
   isAvailable?: boolean;
   stockQuantity?: number | null;
   nutrition?: string;
+  isFeatured?: boolean;
+  isPopular?: boolean;
+  tags?: string[];
 }
 
 export interface CartItem {
@@ -31,6 +34,8 @@ export interface Order {
   items: OrderItem[];
   subtotal: number;
   deliveryFee: number;
+  discountAmount?: number;
+  couponCode?: string;
   total: number;
   address: {
     street: string;
@@ -43,6 +48,38 @@ export interface Order {
   status: 'pending' | 'confirmed' | 'delivered' | 'cancelled';
   createdAt: any; // Firestore Timestamp
 }
+
+export interface Coupon {
+  code: string;           // Ex: 'MANA10', 'BEMVINDO'
+  discountType: 'percentage' | 'fixed'; // '%' ou 'R$'
+  discountValue: number;  // Ex: 10 para 10% ou 5 para R$ 5,00
+  minOrderValue?: number; // Valor mínimo de subtotal (opcional)
+  isActive: boolean;
+}
+
+export const defaultCoupons: Coupon[] = [
+  {
+    code: 'MANA10',
+    discountType: 'percentage',
+    discountValue: 10,
+    minOrderValue: 20,
+    isActive: true,
+  },
+  {
+    code: 'BEMVINDO',
+    discountType: 'fixed',
+    discountValue: 5,
+    minOrderValue: 25,
+    isActive: true,
+  },
+  {
+    code: 'MANA15',
+    discountType: 'percentage',
+    discountValue: 15,
+    minOrderValue: 50,
+    isActive: true,
+  }
+];
 
 export interface UserDocument {
   uid: string;

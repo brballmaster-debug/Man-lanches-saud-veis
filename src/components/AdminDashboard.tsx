@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, MoreHorizontal, ChevronDown, Smartphone } from 'lucide-react';
+import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData, Coupon, defaultCoupons } from '../types';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, MoreHorizontal, ChevronDown, Smartphone, Tag } from 'lucide-react';
 import Logo from './Logo';
+import CouponManager from './CouponManager';
 
 interface AdminDashboardProps {
   onClose: () => void;
@@ -111,6 +112,53 @@ const triggerHaptic = (pattern: 'light' | 'medium' | 'success' | 'warning' = 'li
   return false;
 };
 
+const handleCurrencyChange = (rawValue: string, setter: (val: number) => void) => {
+  const digits = rawValue.replace(/\D/g, ''); // Remove tudo que não for dígito
+  const numericValue = digits === '' ? 0 : Number(digits) / 100; // 7999 vira 79.99
+  setter(numericValue);
+};
+
+interface CurrencyInputFieldProps {
+  value: number;
+  onChange: (val: number) => void;
+  placeholder?: string;
+  className?: string;
+  id?: string;
+  disabled?: boolean;
+}
+
+const CurrencyInputField: React.FC<CurrencyInputFieldProps> = ({
+  value,
+  onChange,
+  placeholder = "0,00",
+  className = "",
+  id,
+  disabled = false
+}) => {
+  const numValue = typeof value === 'number' && !isNaN(value) ? value : 0;
+  return (
+    <div className="relative w-full">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-stone-500 font-semibold text-sm pointer-events-none select-none">
+        R$
+      </span>
+      <input
+        id={id}
+        type="text"
+        inputMode="numeric"
+        disabled={disabled}
+        value={
+          numValue === 0 
+            ? '' 
+            : numValue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        }
+        placeholder={placeholder}
+        onChange={(e) => handleCurrencyChange(e.target.value, onChange)}
+        className={`pl-10 pr-3 py-2 w-full border border-stone-300 rounded-lg text-stone-800 font-medium focus:ring-2 focus:ring-[#2D5A27] focus:outline-none bg-white ${className}`}
+      />
+    </div>
+  );
+};
+
 export default function AdminDashboard({ onClose, products }: AdminDashboardProps) {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'customers' | 'settings' | 'menu' | 'stock' | 'checkout' | 'care_guide'>('dashboard');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -161,6 +209,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [promoMinAmount, setPromoMinAmount] = useState(100);
   const [promoIsActive, setPromoIsActive] = useState(false);
   const [savingPromo, setSavingPromo] = useState(false);
+
+  const [coupons, setCoupons] = useState<Coupon[]>(defaultCoupons);
+  const [isSavingCoupons, setIsSavingCoupons] = useState(false);
 
   const [careGuideData, setCareGuideData] = useState<CareGuideData>(defaultCareGuideData);
   const [expandedCards, setExpandedCards] = useState<Record<string, boolean>>({});
@@ -264,7 +315,14 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setDeliveryDeadlineDay(data.deadlineDay !== undefined ? data.deadlineDay : 4);
         setDeliveryDeadlineHour(data.deadlineHour !== undefined ? data.deadlineHour : 21);
         setDeliveryFee(data.deliveryFee !== undefined ? data.deliveryFee : 5.00);
-        setFreeShippingThreshold(data.freeShippingThreshold !== undefined ? data.freeShippingThreshold : 50.00);
+        const rawFreeShipping = data.freeShippingThreshold !== undefined 
+          ? data.freeShippingThreshold 
+          : data.freeShippingMin !== undefined 
+            ? data.freeShippingMin 
+            : data.deliverySettings?.freeShippingMin !== undefined 
+              ? data.deliverySettings.freeShippingMin 
+              : 50.00;
+        setFreeShippingThreshold(typeof rawFreeShipping === 'number' && !isNaN(rawFreeShipping) ? rawFreeShipping : (Number(rawFreeShipping) || 50.00));
         setDeliveryHours(data.deliveryHours || '13:00 às 19:00');
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
@@ -275,6 +333,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
         setCatalogSubtitle(data.catalogSubtitle || 'Escolha seus lanches e faça seu pedido com facilidade.');
         setCatalogBadge(data.catalogBadge || 'Produção limitada');
+        if (data.coupons && Array.isArray(data.coupons) && data.coupons.length > 0) {
+          setCoupons(data.coupons);
+        }
       } else {
         setIsStoreOpen(true);
         setLateSlotsBlocked(false);
@@ -282,6 +343,17 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       }
     }, (error) => {
       console.warn("Firestore [settings/store] offline/reconnecting:", error.message);
+    });
+
+    const unsubCoupons = onSnapshot(doc(db, 'settings', 'coupons'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.list && Array.isArray(data.list) && data.list.length > 0) {
+          setCoupons(data.list);
+        }
+      }
+    }, (error) => {
+      console.warn("Firestore [settings/coupons] offline/reconnecting:", error.message);
     });
 
     const unsubSpecial = onSnapshot(doc(db, 'settings', 'special'), (docSnap) => {
@@ -360,8 +432,44 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       unsubInfoBanner();
       unsubPromo();
       unsubCareGuide();
+      unsubCoupons();
     };
   }, []);
+
+  const saveCouponsToFirestore = async (updatedCoupons: Coupon[]): Promise<boolean> => {
+    setIsSavingCoupons(true);
+    try {
+      const sanitizedCoupons = updatedCoupons.map(c => {
+        const item: Record<string, any> = {
+          code: String(c.code || '').trim().toUpperCase(),
+          discountType: c.discountType === 'fixed' ? 'fixed' : 'percentage',
+          discountValue: Number(c.discountValue) || 0,
+          isActive: Boolean(c.isActive)
+        };
+        if (c.minOrderValue !== undefined && c.minOrderValue !== null && !isNaN(Number(c.minOrderValue)) && Number(c.minOrderValue) > 0) {
+          item.minOrderValue = Number(c.minOrderValue);
+        }
+        return item as Coupon;
+      });
+
+      await withTimeout(
+        Promise.all([
+          setDoc(doc(db, 'settings', 'store'), { coupons: sanitizedCoupons }, { merge: true }),
+          setDoc(doc(db, 'settings', 'coupons'), { list: sanitizedCoupons }, { merge: true })
+        ]),
+        7000,
+        "Tempo limite ao salvar cupom no servidor."
+      );
+      setCoupons(sanitizedCoupons);
+      return true;
+    } catch (error: any) {
+      console.error("Erro ao salvar cupons:", error);
+      showToast(error?.message?.includes("Tempo limite") ? error.message : "Erro ao sincronizar cupons.");
+      return false;
+    } finally {
+      setIsSavingCoupons(false);
+    }
+  };
 
   const toggleStoreStatus = async () => {
     try {
@@ -406,6 +514,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         deliveryHours: deliveryHours || '13:00 às 19:00',
         deliveryFee: typeof deliveryFee === 'number' && !isNaN(deliveryFee) ? deliveryFee : 5.00,
         freeShippingThreshold: typeof freeShippingThreshold === 'number' && !isNaN(freeShippingThreshold) ? freeShippingThreshold : 50.00,
+        freeShippingMin: typeof freeShippingThreshold === 'number' && !isNaN(freeShippingThreshold) ? freeShippingThreshold : 50.00,
         homeTitle: homeTitle || 'Maná',
         homeSubtitle: homeSubtitle || 'Lanches Saudáveis',
         logoUrl: logoUrl || '',
@@ -1659,13 +1768,10 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
 
                           <div className="grid grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-sm font-medium text-mana-text mb-1">Preço (R$)</label>
-                              <input
-                                type="number"
-                                step="0.01"
+                              <label className="block text-sm font-medium text-mana-text mb-1">Preço</label>
+                              <CurrencyInputField
                                 value={editingProduct.price}
-                                onChange={(e) => setEditingProduct({...editingProduct, price: parseFloat(e.target.value) || 0})}
-                                className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                                onChange={(val) => setEditingProduct({...editingProduct, price: val})}
                               />
                             </div>
                             <div>
@@ -2254,23 +2360,17 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                       <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Taxa de Entrega (R$)</label>
-                        <input
-                          type="number"
-                          step="0.01"
+                        <label className="block text-sm font-medium text-mana-text mb-1">Taxa de Entrega</label>
+                        <CurrencyInputField
                           value={deliveryFee}
-                          onChange={(e) => setDeliveryFee(parseFloat(e.target.value) || 0)}
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                          onChange={(val) => setDeliveryFee(val)}
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Valor Mínimo p/ Frete Grátis (R$)</label>
-                        <input
-                          type="number"
-                          step="0.01"
+                        <label className="block text-sm font-medium text-mana-text mb-1">Valor Mínimo p/ Frete Grátis</label>
+                        <CurrencyInputField
                           value={freeShippingThreshold}
-                          onChange={(e) => setFreeShippingThreshold(parseFloat(e.target.value) || 0)}
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                          onChange={(val) => setFreeShippingThreshold(val)}
                         />
                       </div>
                     </div>
@@ -2542,12 +2642,10 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                           </select>
                         </div>
                         <div>
-                          <label className="block text-sm font-medium text-mana-text mb-1">Valor Mínimo (R$)</label>
-                          <input
-                            type="number"
+                          <label className="block text-sm font-medium text-mana-text mb-1">Valor Mínimo</label>
+                          <CurrencyInputField
                             value={promoMinAmount}
-                            onChange={(e) => setPromoMinAmount(parseFloat(e.target.value) || 0)}
-                            className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                            onChange={(val) => setPromoMinAmount(val)}
                           />
                         </div>
                       </div>
@@ -2561,6 +2659,15 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       </button>
                     </div>
                   </div>
+
+                  {/* Gestão de Cupons de Desconto */}
+                  <CouponManager
+                    coupons={coupons}
+                    onSaveCoupons={saveCouponsToFirestore}
+                    isSaving={isSavingCoupons}
+                    showToast={showToast}
+                    triggerHaptic={triggerHaptic}
+                  />
 
                   {/* Banner Especial */}
                   <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
@@ -3028,6 +3135,15 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       </button>
                     </div>
                   </div>
+
+                  {/* Gestão de Cupons de Desconto */}
+                  <CouponManager
+                    coupons={coupons}
+                    onSaveCoupons={saveCouponsToFirestore}
+                    isSaving={isSavingCoupons}
+                    showToast={showToast}
+                    triggerHaptic={triggerHaptic}
+                  />
 
                   {/* Teste e Diagnóstico de Vibração Háptica */}
                   <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
