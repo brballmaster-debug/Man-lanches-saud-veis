@@ -1,4 +1,4 @@
-const CACHE_NAME = 'mana-lanches-v4';
+const CACHE_NAME = 'mana-lanches-v5';
 
 // Recursos essenciais para inicialização imediata da casca (App Shell)
 const STATIC_ASSETS = [
@@ -6,8 +6,7 @@ const STATIC_ASSETS = [
   '/manifest.json',
   '/favicon.svg',
   '/logo.png',
-  '/pwa-192x192.png',
-  '/pwa-512x512.png'
+  '/logo.png?v=5'
 ];
 
 // 1. Instalação: baixa os arquivos estáticos básicos

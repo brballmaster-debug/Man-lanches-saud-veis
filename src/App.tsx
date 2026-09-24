@@ -206,7 +206,7 @@ export default function App() {
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
         const fetchedLogo = data.logoUrl || '';
-        setLogoUrl(fetchedLogo.includes('logo.svg') ? '/logo.png' : fetchedLogo);
+        setLogoUrl(fetchedLogo.includes('logo.svg') ? '/logo.png?v=5' : fetchedLogo);
         setLogoAspectRatio(data.logoAspectRatio || '16:9');
         setLogoScale(data.logoScale || 'lg');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
@@ -952,7 +952,7 @@ export default function App() {
             <div className="flex items-center gap-3">
               <div className="bg-mana-green/10 p-2 rounded-xl">
                 <img 
-                  src="/logo.png" 
+                  src="/logo.png?v=5" 
                   alt="Maná Lanches Saudáveis" 
                   className="w-10 h-10 object-contain bg-transparent" 
                   fetchPriority="high"
