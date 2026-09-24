@@ -950,7 +950,14 @@ export default function App() {
           <div className="bg-white rounded-2xl shadow-2xl border border-mana-gold/30 p-4 flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="bg-mana-green/10 p-2 rounded-xl">
-                <img src="/logo.png" alt="Logo" className="w-10 h-10 object-contain" onError={(e) => e.currentTarget.src = 'https://picsum.photos/seed/mana/100/100'} />
+                <img 
+                  src="/logo.png" 
+                  alt="Maná Lanches Saudáveis" 
+                  className="w-10 h-10 object-contain bg-transparent" 
+                  fetchPriority="high"
+                  decoding="async"
+                  onError={(e) => { e.currentTarget.src = '/favicon.svg'; }} 
+                />
               </div>
               <div>
                 <p className="font-bold text-mana-text text-sm">Instalar App Maná</p>
