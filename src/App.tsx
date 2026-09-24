@@ -205,7 +205,8 @@ export default function App() {
         setPickUpHours(data.pickUpHours || '17:30 às 19:00');
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
-        setLogoUrl(data.logoUrl || '');
+        const fetchedLogo = data.logoUrl || '';
+        setLogoUrl(fetchedLogo.includes('logo.svg') ? '/logo.png' : fetchedLogo);
         setLogoAspectRatio(data.logoAspectRatio || '16:9');
         setLogoScale(data.logoScale || 'lg');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');

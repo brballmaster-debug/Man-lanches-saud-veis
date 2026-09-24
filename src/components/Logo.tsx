@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import logoSvgUrl from '../assets/logo.svg';
-import logoIconUrl from '../assets/logo-icon.svg';
 
 export const logoPngUrl = '/logo.png';
-export { logoSvgUrl, logoIconUrl };
+export const logoSvgUrl = '/logo.png';
+export const logoIconUrl = '/logo.png';
 
 export interface LogoProps {
   /**
@@ -54,7 +53,9 @@ export const Logo: React.FC<LogoProps> = ({
     setImgError(false);
   }, [customUrl]);
 
-  const logoSrc = (!imgError && customUrl) ? customUrl : '/logo.png';
+  // Se customUrl for nulo, indefinido ou contiver 'logo.svg', o fallback padrão é estritamente '/logo.png'
+  const isCustomValid = !imgError && !!customUrl && !customUrl.toLowerCase().includes('logo.svg');
+  const logoSrc = isCustomValid ? customUrl! : '/logo.png';
   const isWidescreen = aspectRatio === '16:9';
 
   return (
@@ -66,10 +67,10 @@ export const Logo: React.FC<LogoProps> = ({
       decoding="async"
       loading="eager"
       onError={(e) => {
-        if (!imgError && customUrl) {
+        if (isCustomValid) {
           setImgError(true);
         } else {
-          // Fallback caso a imagem não possa ser carregada
+          // Se mesmo /logo.png falhar, usa favicon svg
           e.currentTarget.src = '/favicon.svg';
         }
       }}
