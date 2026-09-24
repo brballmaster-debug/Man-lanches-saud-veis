@@ -69,6 +69,7 @@ export const Logo: React.FC<LogoProps> = ({
         alt={alt}
         className={`${className} ${isWidescreen ? 'aspect-[16/9]' : ''} object-contain select-none transition-transform duration-300 hover:scale-105`}
         loading="eager"
+        fetchPriority="high"
         decoding="async"
         onError={() => setImgError(true)}
       />
@@ -83,6 +84,7 @@ export const Logo: React.FC<LogoProps> = ({
         alt={alt}
         className={`${className} object-contain select-none`}
         loading="eager"
+        fetchPriority="high"
         decoding="async"
       />
     );
@@ -96,6 +98,7 @@ export const Logo: React.FC<LogoProps> = ({
         alt={alt}
         className={`${className} object-contain select-none`}
         loading="eager"
+        fetchPriority="high"
         decoding="async"
       />
     );

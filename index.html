@@ -20,7 +20,25 @@
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
           navigator.serviceWorker.register('/sw.js')
-            .then(reg => console.log('Service Worker registrado!', reg))
+            .then(reg => {
+              // Auto-update: detecta novas versões do Service Worker
+              reg.onupdatefound = () => {
+                const installingWorker = reg.installing;
+                if (installingWorker) {
+                  installingWorker.onstatechange = () => {
+                    if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                      // Nova versão instalada: atualiza automaticamente a aplicação
+                      console.log('Nova versão do app detectada. Atualizando...');
+                      window.location.reload();
+                    }
+                  };
+                }
+              };
+              // Verifica novas versões ao focar na aba
+              window.addEventListener('focus', () => {
+                reg.update().catch(() => {});
+              });
+            })
             .catch(err => console.log('Erro ao registrar Service Worker:', err));
         });
       }

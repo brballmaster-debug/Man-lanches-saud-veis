@@ -3,18 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard, BookOpen } from 'lucide-react';
 import { products as defaultProducts } from './data';
 import { Product, CartItem, InfoSection, Promotion } from './types';
 import { auth, db, signInWithGoogle, logOut, signInAnonymously } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, runTransaction, collection, serverTimestamp, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
-import OrderHistory from './components/OrderHistory';
-import AdminDashboard from './components/AdminDashboard';
-import AuthModal from './components/AuthModal';
-import CareGuide from './components/CareGuide';
 import Logo from './components/Logo';
+
+// Modais e painéis pesados carregados sob demanda (Code Splitting / Lazy Loading)
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const AuthModal = lazy(() => import('./components/AuthModal'));
+const OrderHistory = lazy(() => import('./components/OrderHistory'));
+const CareGuide = lazy(() => import('./components/CareGuide'));
 
 const DELIVERY_SLOTS = [
   '13:00', '13:15', '13:30', '13:45',
@@ -832,6 +834,8 @@ export default function App() {
                   src={specialOfTheDay.imageUrl} 
                   alt={specialOfTheDay.title} 
                   className="w-full h-full object-cover"
+                  fetchPriority="high"
+                  decoding="async"
                   onError={(e) => (e.currentTarget.style.display = 'none')}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent md:hidden"></div>
@@ -861,7 +865,9 @@ export default function App() {
                     <img 
                       src={product.imageUrl} 
                       alt={product.name} 
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover aspect-video sm:aspect-auto"
+                      loading="lazy"
+                      decoding="async"
                       referrerPolicy="no-referrer"
                     />
                     {!isAvailable && (
@@ -977,7 +983,9 @@ export default function App() {
               <img 
                 src={selectedProduct.imageUrl} 
                 alt={selectedProduct.name} 
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover aspect-video"
+                loading="lazy"
+                decoding="async"
                 referrerPolicy="no-referrer"
               />
               <button 
@@ -1101,11 +1109,13 @@ export default function App() {
                     const isAvailable = currentProduct ? currentProduct.isAvailable !== false : true;
                     return (
                     <div key={item.product.id} className={`flex gap-4 bg-white p-3 rounded-xl border border-mana-gold/10 ${!isAvailable ? 'opacity-75 grayscale-[0.5]' : ''}`}>
-                      <div className="relative">
+                      <div className="relative w-16 h-16 flex-shrink-0">
                         <img 
                           src={item.product.imageUrl} 
                           alt={item.product.name} 
-                          className="w-16 h-16 rounded-lg object-cover"
+                          className="w-16 h-16 rounded-lg object-cover aspect-square"
+                          loading="lazy"
+                          decoding="async"
                           referrerPolicy="no-referrer"
                         />
                         {!isAvailable && (
@@ -1509,10 +1519,21 @@ export default function App() {
         </div>
       )}
       {/* Modals & Pages */}
-      {showOrderHistory && <OrderHistory onClose={() => setShowOrderHistory(false)} />}
-      {showAdminDashboard && <AdminDashboard onClose={() => setShowAdminDashboard(false)} products={dbProducts} />}
-      {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
-      {showCareGuide && <CareGuide onClose={() => setShowCareGuide(false)} logoUrl={logoUrl} homeTitle={homeTitle} />}
+      <Suspense
+        fallback={
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="bg-white p-4 rounded-2xl shadow-xl flex items-center gap-3">
+              <div className="w-5 h-5 border-2 border-[#2D5A27] border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm font-medium text-gray-700">Carregando...</span>
+            </div>
+          </div>
+        }
+      >
+        {showOrderHistory && <OrderHistory onClose={() => setShowOrderHistory(false)} />}
+        {showAdminDashboard && <AdminDashboard onClose={() => setShowAdminDashboard(false)} products={dbProducts} />}
+        {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} />}
+        {showCareGuide && <CareGuide onClose={() => setShowCareGuide(false)} logoUrl={logoUrl} homeTitle={homeTitle} />}
+      </Suspense>
 
       {/* Success Modal */}
       {showSuccessModal && (

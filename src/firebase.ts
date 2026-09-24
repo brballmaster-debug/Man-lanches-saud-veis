@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { 
   getAuth, 
   GoogleAuthProvider, 
@@ -10,6 +10,9 @@ import {
   signInAnonymously as firebaseSignInAnonymously
 } from 'firebase/auth';
 import { 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager,
   getFirestore,
   doc, 
   getDoc, 
@@ -19,9 +22,28 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
+// Inicialização segura do App
+export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+
+// Inicialização do Firestore com Cache Persistente em IndexedDB
+let dbInstance: any;
+try {
+  dbInstance = initializeFirestore(
+    app,
+    {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    },
+    (firebaseConfig as any).firestoreDatabaseId
+  );
+} catch (error) {
+  // Fallback caso a instância já tenha sido inicializada anteriormente
+  dbInstance = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
+}
+
+export const db = dbInstance;
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const googleProvider = new GoogleAuthProvider();
 
 export const signInAnonymously = async (source?: string) => {
