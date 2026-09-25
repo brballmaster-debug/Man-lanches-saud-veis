@@ -36,6 +36,7 @@ export interface Order {
   deliveryFee: number;
   discountAmount?: number;
   couponCode?: string;
+  promotionName?: string | null;
   total: number;
   address: {
     street: string;
@@ -43,9 +44,12 @@ export interface Order {
     neighborhood: string;
     complement?: string;
   };
+  deliveryType?: 'delivery' | 'pickup' | string;
   deliveryDate: string;
   deliveryTime: string;
   status: 'pending' | 'confirmed' | 'delivered' | 'cancelled';
+  paymentMethod?: string;
+  pixPaymentType?: 'antecipado' | 'entrega' | null;
   createdAt: any; // Firestore Timestamp
 }
 

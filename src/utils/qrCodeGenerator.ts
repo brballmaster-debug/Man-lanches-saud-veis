@@ -648,7 +648,7 @@ export function renderQrToDataUrl(text: string, options: QrRenderOptions = {}): 
   const {
     size = 600,
     margin = 2,
-    colorDark = '#20371E',
+    colorDark = '#2D5A27',
     colorLight = '#FFFFFF',
     ecc = 'M'
   } = options;
@@ -694,7 +694,7 @@ export function renderQrToSvg(text: string, options: QrRenderOptions = {}): stri
   const {
     size = 400,
     margin = 2,
-    colorDark = '#20371E',
+    colorDark = '#2D5A27',
     colorLight = '#FFFFFF',
     ecc = 'M'
   } = options;

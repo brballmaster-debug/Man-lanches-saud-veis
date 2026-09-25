@@ -10,14 +10,12 @@ import {
   Check, 
   Heart, 
   Instagram, 
-  BookOpen,
-  QrCode
+  BookOpen
 } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CareGuideData, CareGuideItem, defaultCareGuideData } from '../types';
 import { Logo } from './Logo';
-import CareGuideQrModal from './CareGuideQrModal';
 
 export interface CareGuideProps {
   onClose: () => void;
@@ -101,7 +99,6 @@ export const CareGuide: React.FC<CareGuideProps> = ({
   homeTitle = 'Maná'
 }) => {
   const [data, setData] = useState<CareGuideData>(defaultCareGuideData);
-  const [showQrModal, setShowQrModal] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'care_guide'), (docSnap) => {
@@ -135,19 +132,11 @@ export const CareGuide: React.FC<CareGuideProps> = ({
           <span className="xs:hidden">Voltar</span>
         </button>
 
-        <span className="text-xs font-serif font-bold text-[#4B5E3C] tracking-wide uppercase truncate text-center hidden md:inline">
+        <span className="text-xs font-serif font-bold text-[#4B5E3C] tracking-wide uppercase truncate text-center">
           Guia de Conservação & Preparo
         </span>
 
-        <button
-          type="button"
-          onClick={() => setShowQrModal(true)}
-          className="inline-flex items-center gap-1.5 bg-white hover:bg-[#F0EAE1] text-[#2B4A28] border border-[#2B4A28]/30 px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-xs shrink-0 cursor-pointer"
-          title="Obter QR Code do Guia de Preparo para embalagens e adesivos"
-        >
-          <QrCode size={16} />
-          <span>QR Code</span>
-        </button>
+        <div className="w-[72px] sm:w-[90px]" aria-hidden="true" />
       </div>
 
       {/* Conteúdo Central inspirado exatamente no folheto */}
@@ -450,15 +439,6 @@ export const CareGuide: React.FC<CareGuideProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Modal do QR Code com opção de download PNG e impressão de tag */}
-      {showQrModal && (
-        <CareGuideQrModal
-          onClose={() => setShowQrModal(false)}
-          homeTitle={homeTitle}
-          logoUrl={logoUrl}
-        />
-      )}
     </div>
   );
 };

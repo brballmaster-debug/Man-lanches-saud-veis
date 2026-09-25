@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData, Coupon, defaultCoupons } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode } from 'lucide-react';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard } from 'lucide-react';
 import Logo from './Logo';
 import CouponManager from './CouponManager';
 import CareGuideQrModal from './CareGuideQrModal';
@@ -220,6 +220,12 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [savingCareGuide, setSavingCareGuide] = useState(false);
   const [showCareGuideQr, setShowCareGuideQr] = useState(false);
   const [savingSettings, setSavingSettings] = useState(false);
+
+  // Configurações de Pagamento via Pix
+  const [pixKey, setPixKey] = useState('');
+  const [pixAllowAdvance, setPixAllowAdvance] = useState(true);
+  const [pixAllowOnDelivery, setPixAllowOnDelivery] = useState(true);
+  const [savingPixSettings, setSavingPixSettings] = useState(false);
   
   // Estados de Compressão de Imagens via Canvas
   const [isCompressingProductImage, setIsCompressingProductImage] = useState(false);
@@ -335,6 +341,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
         setCatalogSubtitle(data.catalogSubtitle || 'Escolha seus lanches e faça seu pedido com facilidade.');
         setCatalogBadge(data.catalogBadge || 'Produção limitada');
+        setPixKey(data.pixKey || '');
+        setPixAllowAdvance(data.pixAllowAdvance !== false && data.pixAdvanceEnabled !== false);
+        setPixAllowOnDelivery(data.pixAllowOnDelivery !== false && data.pixDeliveryEnabled !== false);
         if (data.coupons && Array.isArray(data.coupons) && data.coupons.length > 0) {
           setCoupons(data.coupons);
         }
@@ -524,7 +533,12 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         logoScale: logoScale || 'lg',
         catalogTitle: catalogTitle || 'Nosso Catálogo',
         catalogSubtitle: catalogSubtitle || 'Escolha seus lanches e faça seu pedido com facilidade.',
-        catalogBadge: catalogBadge || 'Produção limitada'
+        catalogBadge: catalogBadge || 'Produção limitada',
+        pixKey: (pixKey || '').trim(),
+        pixAllowAdvance: Boolean(pixAllowAdvance),
+        pixAllowOnDelivery: Boolean(pixAllowOnDelivery),
+        pixAdvanceEnabled: Boolean(pixAllowAdvance),
+        pixDeliveryEnabled: Boolean(pixAllowOnDelivery)
       };
 
       await withTimeout(
@@ -539,6 +553,31 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       showToast(error?.message?.includes("Tempo limite") ? error.message : "Erro ao salvar configurações.");
     } finally {
       setSavingSettings(false);
+    }
+  };
+
+  const savePixSettings = async () => {
+    setSavingPixSettings(true);
+    try {
+      const cleanData = {
+        pixKey: (pixKey || '').trim(),
+        pixAllowAdvance: Boolean(pixAllowAdvance),
+        pixAllowOnDelivery: Boolean(pixAllowOnDelivery),
+        pixAdvanceEnabled: Boolean(pixAllowAdvance),
+        pixDeliveryEnabled: Boolean(pixAllowOnDelivery)
+      };
+      await withTimeout(
+        setDoc(doc(db, 'settings', 'store'), cleanData, { merge: true }),
+        7000,
+        "Tempo limite ao salvar configurações do Pix. Tente novamente."
+      );
+      triggerHaptic('success');
+      showToast("Configurações do Pix salvas com sucesso!");
+    } catch (error: any) {
+      console.error("Error saving pix settings:", error);
+      showToast(error?.message?.includes("Tempo limite") ? error.message : "Erro ao salvar configurações do Pix.");
+    } finally {
+      setSavingPixSettings(false);
     }
   };
 
@@ -945,15 +984,28 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const copyOrderToClipboard = (order: Order) => {
+    const isPickup = order.deliveryType === 'pickup' || 
+      order.deliveryType === 'retirada' || 
+      order.address?.street?.toUpperCase?.()?.includes('RETIRADA');
+
     let text = `PEDIDO #${order.id.slice(-6).toUpperCase()}\n`;
     text += `Cliente: ${order.customerName}\n`;
-    text += `Data: ${order.deliveryDate} às ${order.deliveryTime}\n\n`;
-    text += `ITENS:\n`;
+    text += `Data: ${order.deliveryDate} às ${order.deliveryTime}\n`;
+    text += `Modalidade: ${isPickup ? 'Retirada no balcão' : 'Entrega'}\n`;
+    if (order.paymentMethod) {
+      text += `Pagamento: ${order.paymentMethod}\n`;
+    }
+    text += `\nITENS:\n`;
     order.items.forEach(item => {
       text += `${item.quantity}x ${item.name} - R$ ${(item.price * item.quantity).toFixed(2)}\n`;
     });
-    text += `\nTOTAL: R$ ${order.total.toFixed(2)}\n`;
-    text += `Endereço: ${order.address.street}, ${order.address.number} - ${order.address.neighborhood}`;
+    text += `\nTOTAL (${isPickup ? 'com retirada' : 'com entrega'}): R$ ${order.total.toFixed(2)}\n`;
+    if (isPickup) {
+      text += `Recebimento: Retirada no balcão`;
+    } else {
+      text += `Endereço: ${order.address.street}, ${order.address.number} - ${order.address.neighborhood}`;
+      if (order.address.complement) text += ` (${order.address.complement})`;
+    }
     
     navigator.clipboard.writeText(text);
     showToast("Resumo copiado!");
@@ -1405,7 +1457,12 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                             </span>
                           </h3>
                           <div className="grid gap-4">
-                            {groupedOrders[time].map((order, index) => (
+                            {groupedOrders[time].map((order, index) => {
+                              const isPickupOrder = order.deliveryType === 'pickup' || 
+                                order.deliveryType === 'retirada' || 
+                                order.address?.street?.toUpperCase?.()?.includes('RETIRADA');
+
+                              return (
                               <div key={order.id} className="bg-white rounded-xl p-5 shadow-sm border border-mana-gold/20 flex flex-col md:flex-row gap-6">
                                 <div className="flex-1">
                                   <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
@@ -1416,6 +1473,26 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                         </span>
                                         {order.customerName}
                                       </h3>
+
+                                      {/* Badge Identificador de Entrega ou Retirada */}
+                                      {isPickupOrder ? (
+                                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-900 border border-amber-300 font-semibold px-2.5 py-0.5 rounded-full text-xs shrink-0 shadow-2xs">
+                                          <MapPin size={12} className="text-amber-700" />
+                                          Retirada no balcão
+                                        </span>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-900 border border-blue-200 font-semibold px-2.5 py-0.5 rounded-full text-xs shrink-0 shadow-2xs">
+                                          <MapPin size={12} className="text-blue-700" />
+                                          Entrega
+                                        </span>
+                                      )}
+
+                                      {order.paymentMethod && (
+                                        <span className="inline-flex items-center gap-1 bg-stone-100 text-stone-700 border border-stone-200 font-medium px-2 py-0.5 rounded-full text-xs shrink-0">
+                                          <CreditCard size={11} className="text-stone-500" />
+                                          {order.paymentMethod}
+                                        </span>
+                                      )}
                                     </div>
                                     <div className="flex items-center gap-2">
                                       {renderStatusBadge(order.status)}
@@ -1431,8 +1508,15 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                       </button>
                                     </div>
                                   </div>
-                                  <p className="text-sm text-mana-text-light mb-4">
+                                  <p className="text-sm text-mana-text-light mb-1">
                                     Data: {order.deliveryDate}
+                                  </p>
+                                  <p className="text-xs text-mana-text-light mb-4">
+                                    {isPickupOrder ? (
+                                      <span className="font-semibold text-amber-800">Retirada no local ({order.deliveryTime})</span>
+                                    ) : (
+                                      <span>Endereço: {order.address.street}, {order.address.number} - {order.address.neighborhood}{order.address.complement ? ` (${order.address.complement})` : ''}</span>
+                                    )}
                                   </p>
                                   
                                   <div className="space-y-1 mb-4">
@@ -1445,7 +1529,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                   </div>
                                   
                                   <div className="flex justify-between items-center pt-4 border-t border-mana-gold/10">
-                                    <span className="text-sm text-mana-text-light">Total (com entrega)</span>
+                                    <span className="text-sm text-mana-text-light">
+                                      {isPickupOrder ? 'Total (com retirada)' : 'Total (com entrega)'}
+                                    </span>
                                     <span className="font-bold text-mana-green">R$ {order.total.toFixed(2)}</span>
                                   </div>
                                 </div>
@@ -1593,7 +1679,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                   )}
                                 </div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         </div>
                       ))
@@ -3138,6 +3225,109 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                     </div>
                   </div>
 
+                  {/* Métodos de Pagamento & Configurações do Pix */}
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-5 pb-4 border-b border-mana-gold/20">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-mana-green/10 text-mana-green flex items-center justify-center shrink-0">
+                          <Smartphone size={22} />
+                        </div>
+                        <div>
+                          <h3 className="font-serif text-xl font-bold text-mana-green">Métodos de Pagamento / Configurações do Pix</h3>
+                          <p className="text-xs text-mana-text-light mt-0.5">Cadastre a chave Pix da loja e defina quais modalidades os clientes podem escolher no checkout.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      {/* Campo Chave Pix */}
+                      <div>
+                        <label className="block text-sm font-semibold text-mana-text mb-1.5 flex items-center gap-2">
+                          <span>Chave Pix da Loja (settings.pixKey)</span>
+                          <span className="text-[11px] font-normal text-mana-text-light">(CNPJ, Celular, E-mail ou Chave Aleatória)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={pixKey}
+                          onChange={(e) => setPixKey(e.target.value)}
+                          placeholder="Ex: 12.345.678/0001-90 ou financeiro@manalanches.com.br"
+                          className="w-full px-4 py-2.5 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white text-sm"
+                        />
+                        <p className="text-xs text-mana-text-light mt-1.5 leading-relaxed">
+                          Esta chave será apresentada na caixa destacada do checkout quando o cliente selecionar <strong>Pagar Antecipado</strong>, com botão de cópia com 1 clique e instrução de envio de comprovante via WhatsApp.
+                        </p>
+                      </div>
+
+                      {/* Toggles das Modalidades Pix */}
+                      <div className="pt-4 border-t border-gray-100 space-y-3.5">
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-mana-green">Modalidades Permitidas no Checkout</h4>
+                        
+                        {/* Toggle 1: Pix Antecipado */}
+                        <div className="flex items-center justify-between p-4 rounded-xl border border-mana-gold/20 bg-mana-bg/40">
+                          <div className="pr-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-mana-text">Permitir Pix Antecipado</span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pixAllowAdvance ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'}`}>
+                                {pixAllowAdvance ? 'Ativo' : 'Inativo'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-mana-text-light mt-0.5">
+                              Exibe a Chave Pix da loja e botão de cópia rápida no checkout para pagamento prévio, solicitando envio do comprovante no WhatsApp.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPixAllowAdvance(!pixAllowAdvance)}
+                            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none ${pixAllowAdvance ? 'bg-mana-green' : 'bg-gray-200'}`}
+                            aria-label="Alternar Pix Antecipado"
+                          >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${pixAllowAdvance ? 'translate-x-6' : 'translate-x-1'}`} />
+                          </button>
+                        </div>
+
+                        {/* Toggle 2: Pix na Entrega */}
+                        <div className="flex items-center justify-between p-4 rounded-xl border border-mana-gold/20 bg-mana-bg/40">
+                          <div className="pr-4">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-sm text-mana-text">Permitir Pix na Entrega</span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${pixAllowOnDelivery ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-500'}`}>
+                                {pixAllowOnDelivery ? 'Ativo' : 'Inativo'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-mana-text-light mt-0.5">
+                              Permite ao cliente pagar via Pix no momento da entrega (maquininha ou QR Code com o entregador) ou na retirada.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setPixAllowOnDelivery(!pixAllowOnDelivery)}
+                            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none ${pixAllowOnDelivery ? 'bg-mana-green' : 'bg-gray-200'}`}
+                            aria-label="Alternar Pix na Entrega"
+                          >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${pixAllowOnDelivery ? 'translate-x-6' : 'translate-x-1'}`} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Botão de Salvar Pix */}
+                      <div className="flex justify-end pt-2">
+                        <button
+                          type="button"
+                          onClick={savePixSettings}
+                          disabled={savingPixSettings}
+                          className="bg-mana-green hover:bg-mana-green-dark text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-md shadow-mana-green/20 flex items-center gap-2 text-xs sm:text-sm disabled:opacity-50"
+                        >
+                          {savingPixSettings ? (
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                          ) : (
+                            <CheckCircle size={17} />
+                          )}
+                          <span>{savingPixSettings ? 'Salvando...' : 'Salvar Configurações do Pix'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Gestão de Cupons de Desconto */}
                   <CouponManager
                     coupons={coupons}
@@ -3284,7 +3474,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       <button
                         type="button"
                         onClick={() => setShowCareGuideQr(true)}
-                        className="px-4 py-2 text-xs font-semibold text-[#2B4A28] bg-white border border-[#2B4A28]/30 hover:bg-[#FAF7F0] rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                        className="px-4 py-2 text-xs font-semibold text-[#2D5A27] bg-white border border-[#2D5A27]/30 hover:bg-[#FAF7F0] rounded-xl transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
                         title="Gerar e baixar o QR Code para embalagens e etiquetas"
                       >
                         <QrCode size={15} />
@@ -3316,7 +3506,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                   {/* Bloco de Destaque: QR Code de Embalagem */}
                   <div className="bg-[#FAF7F0] border border-[#DDD3C1] rounded-2xl p-5 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div className="flex items-start sm:items-center gap-3.5">
-                      <div className="w-12 h-12 rounded-2xl bg-[#2B4A28] text-white flex items-center justify-center shrink-0 shadow-sm">
+                      <div className="w-12 h-12 rounded-2xl bg-[#2D5A27] text-white flex items-center justify-center shrink-0 shadow-sm">
                         <QrCode size={24} />
                       </div>
                       <div>
@@ -3331,7 +3521,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                     <button
                       type="button"
                       onClick={() => setShowCareGuideQr(true)}
-                      className="bg-[#2B4A28] hover:bg-[#20371E] active:scale-[0.98] text-white px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md shadow-[#2B4A28]/20 flex items-center gap-2 shrink-0 cursor-pointer"
+                      className="bg-[#2D5A27] hover:bg-[#20371E] active:scale-[0.98] text-white px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md shadow-[#2D5A27]/20 flex items-center gap-2 shrink-0 cursor-pointer"
                     >
                       <QrCode size={16} />
                       <span>Visualizar & Baixar PNG</span>

@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
-import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard, BookOpen, Search, Sparkles, Tag } from 'lucide-react';
+import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard, BookOpen, Search, Sparkles, Tag, Copy, Check } from 'lucide-react';
 import { products as defaultProducts } from './data';
 import { Product, CartItem, InfoSection, Promotion, Coupon, defaultCoupons } from './types';
 import { auth, db, signInWithGoogle, logOut, signInAnonymously } from './firebase';
@@ -290,6 +290,17 @@ export default function App() {
         setCatalogSubtitle(data.catalogSubtitle || 'Escolha seus lanches e faça seu pedido com facilidade.');
         setCatalogBadge(data.catalogBadge || 'Produção limitada');
         setIsCombosEnabled(data.combosEnabled === true || data.enableCombos === true);
+        const fetchedPixKey = data.pixKey || '';
+        setPixKey(fetchedPixKey);
+        const allowAdvance = data.pixAllowAdvance !== false && data.pixAdvanceEnabled !== false;
+        const allowDelivery = data.pixAllowOnDelivery !== false && data.pixDeliveryEnabled !== false;
+        setPixAllowAdvance(allowAdvance);
+        setPixAllowOnDelivery(allowDelivery);
+        if (allowAdvance && !allowDelivery) {
+          setPixPaymentType('antecipado');
+        } else if (!allowAdvance && allowDelivery) {
+          setPixPaymentType('entrega');
+        }
         if (data.coupons && Array.isArray(data.coupons) && data.coupons.length > 0) {
           setCoupons(data.coupons);
         }
@@ -436,6 +447,11 @@ export default function App() {
     };
   });
   const [paymentMethod, setPaymentMethod] = useState<'dinheiro' | 'pix' | 'cartão' | null>(null);
+  const [pixPaymentType, setPixPaymentType] = useState<'antecipado' | 'entrega'>('antecipado');
+  const [pixKey, setPixKey] = useState('');
+  const [pixAllowAdvance, setPixAllowAdvance] = useState(true);
+  const [pixAllowOnDelivery, setPixAllowOnDelivery] = useState(true);
+  const [pixCopied, setPixCopied] = useState(false);
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [deliveryTime, setDeliveryTime] = useState('');
   const [isCheckoutStep, setIsCheckoutStep] = useState(false);
@@ -466,6 +482,20 @@ export default function App() {
   const showToast = (message: string) => {
     setToastMessage(message);
     setTimeout(() => setToastMessage(''), 3000);
+  };
+
+  const handleCopyPixKey = async () => {
+    if (!pixKey) return;
+    try {
+      await navigator.clipboard.writeText(pixKey);
+      setPixCopied(true);
+      triggerHaptic('success');
+      showToast("Chave Pix copiada com sucesso!");
+      setTimeout(() => setPixCopied(false), 3000);
+    } catch (err) {
+      console.error("Erro ao copiar Chave Pix:", err);
+      showToast("Não foi possível copiar automaticamente.");
+    }
   };
 
   // Save to localStorage whenever data changes
@@ -716,6 +746,11 @@ export default function App() {
           address: address // Save address for future use
         });
 
+        // Resolve descriptive payment method
+        const paymentDisplay = paymentMethod === 'pix'
+          ? (pixPaymentType === 'antecipado' ? 'Pix (Antecipado)' : 'Pix (Na Entrega)')
+          : (paymentMethod === 'dinheiro' ? 'Dinheiro' : 'Cartão (na entrega)');
+
         // Create order
         const newOrderRef = doc(collection(db, 'orders'));
         transaction.set(newOrderRef, {
@@ -736,7 +771,8 @@ export default function App() {
           deliveryFee,
           total: cartTotal,
           address: deliveryType === 'pickup' ? { street: 'RETIRADA NO LOCAL', number: '', neighborhood: '', complement: '' } : address,
-          paymentMethod,
+          paymentMethod: paymentDisplay,
+          pixPaymentType: paymentMethod === 'pix' ? pixPaymentType : null,
           deliveryType,
           deliveryDate,
           deliveryTime: deliverySlotsEnabled ? deliveryTime : 'A combinar',
@@ -746,6 +782,10 @@ export default function App() {
       });
 
       // Transaction successful, open WhatsApp
+      const paymentDisplay = paymentMethod === 'pix'
+        ? (pixPaymentType === 'antecipado' ? 'Pix (Antecipado)' : 'Pix (Na Entrega)')
+        : (paymentMethod === 'dinheiro' ? 'Dinheiro' : 'Cartão (na entrega)');
+
       let message = `Olá! Meu nome é *${customerName}* e gostaria de fazer o seguinte pedido:\n\n`;
       cart.forEach(item => {
         message += `${item.quantity}x ${item.product.name} - R$ ${(item.product.price * item.quantity).toFixed(2)}\n`;
@@ -773,7 +813,11 @@ export default function App() {
         }
       }
       
-      message += `\n\n💳 *Meio de Pagamento:* ${paymentMethod === 'dinheiro' ? 'Dinheiro' : paymentMethod === 'pix' ? 'PIX' : 'Cartão (na entrega)'}`;
+      message += `\n\n💳 *Forma de Pagamento:* ${paymentDisplay}`;
+      if (paymentMethod === 'pix' && pixPaymentType === 'antecipado' && pixKey) {
+        message += `\n🔑 *Chave Pix:* ${pixKey}`;
+        message += `\n📌 *(Favor anexar o comprovante de pagamento nesta conversa)*`;
+      }
       
       message += `\n\n⏰ *${deliveryType === 'pickup' ? 'Data da Retirada' : 'Data da Entrega'}:* ${deliveryDate}`;
       if (deliverySlotsEnabled) {
@@ -1852,7 +1896,7 @@ export default function App() {
                     <h3 className="font-semibold text-mana-green mb-3 flex items-center gap-2">
                        <CreditCard size={18} /> Meio de Pagamento *
                     </h3>
-                    <div className="grid grid-cols-3 gap-2 mb-6">
+                    <div className="grid grid-cols-3 gap-2 mb-4">
                       {[
                         { id: 'pix', label: 'PIX', icon: <Smartphone size={14} /> },
                         { id: 'dinheiro', label: 'Dinheiro', icon: <Banknote size={14} /> },
@@ -1860,7 +1904,10 @@ export default function App() {
                       ].map(method => (
                         <button
                           key={method.id}
-                          onClick={() => setPaymentMethod(method.id as any)}
+                          onClick={() => {
+                            setPaymentMethod(method.id as any);
+                            triggerHaptic('light');
+                          }}
                           className={`py-3 rounded-xl text-sm font-medium transition-all border flex flex-col items-center justify-center gap-1 ${
                             paymentMethod === method.id 
                               ? 'bg-mana-green text-white border-mana-green shadow-md shadow-mana-green/20' 
@@ -1872,6 +1919,139 @@ export default function App() {
                         </button>
                       ))}
                     </div>
+
+                    {/* Detalhamento do Pix (Antecipado vs Na Entrega) */}
+                    {paymentMethod === 'pix' && (
+                      <div className="mb-6 p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200/80 space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
+                            <Smartphone size={15} className="text-emerald-700" />
+                            Como prefere pagar com Pix?
+                          </span>
+                        </div>
+
+                        {/* Opções de Modalidade Pix */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {/* Opção 1: Antecipado */}
+                          {pixAllowAdvance && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPixPaymentType('antecipado');
+                                triggerHaptic('light');
+                              }}
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                                pixPaymentType === 'antecipado'
+                                  ? 'bg-white border-emerald-600 shadow-xs ring-2 ring-emerald-600/20'
+                                  : 'bg-white/80 border-emerald-200/60 hover:bg-white text-stone-700'
+                              }`}
+                            >
+                              <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                                pixPaymentType === 'antecipado' ? 'border-emerald-600 bg-emerald-600' : 'border-stone-300'
+                              }`}>
+                                {pixPaymentType === 'antecipado' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className={`text-xs font-bold leading-tight ${pixPaymentType === 'antecipado' ? 'text-emerald-950' : 'text-stone-800'}`}>
+                                  Pagar Antecipado
+                                </p>
+                                <p className="text-[11px] text-stone-500 mt-0.5">
+                                  Chave Pix da loja
+                                </p>
+                              </div>
+                            </button>
+                          )}
+
+                          {/* Opção 2: Na Entrega */}
+                          {pixAllowOnDelivery && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPixPaymentType('entrega');
+                                triggerHaptic('light');
+                              }}
+                              className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex items-start gap-2.5 ${
+                                pixPaymentType === 'entrega'
+                                  ? 'bg-white border-emerald-600 shadow-xs ring-2 ring-emerald-600/20'
+                                  : 'bg-white/80 border-emerald-200/60 hover:bg-white text-stone-700'
+                              }`}
+                            >
+                              <div className={`w-4 h-4 rounded-full border mt-0.5 flex items-center justify-center shrink-0 ${
+                                pixPaymentType === 'entrega' ? 'border-emerald-600 bg-emerald-600' : 'border-stone-300'
+                              }`}>
+                                {pixPaymentType === 'entrega' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </div>
+                              <div className="min-w-0">
+                                <p className={`text-xs font-bold leading-tight ${pixPaymentType === 'entrega' ? 'text-emerald-950' : 'text-stone-800'}`}>
+                                  Pagar na Entrega
+                                </p>
+                                <p className="text-[11px] text-stone-500 mt-0.5">
+                                  {deliveryType === 'pickup' ? 'No balcão de retirada' : 'Maquininha / QR entregador'}
+                                </p>
+                              </div>
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Se o cliente escolher "Pagar Antecipado": Caixa destacada com chave Pix e botão Copiar */}
+                        {pixPaymentType === 'antecipado' && (
+                          <div className="bg-white rounded-xl p-3.5 border border-emerald-200 shadow-2xs space-y-2.5 animate-in fade-in duration-150">
+                            <div>
+                              <p className="text-[11px] font-semibold text-stone-600 uppercase tracking-wider mb-1">
+                                Chave Pix da Loja:
+                              </p>
+                              {pixKey ? (
+                                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 p-2.5 bg-stone-50 rounded-lg border border-stone-200">
+                                  <span className="font-mono font-bold text-xs sm:text-sm text-stone-800 select-all break-all sm:truncate">
+                                    {pixKey}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={handleCopyPixKey}
+                                    className={`px-3 py-2 rounded-lg text-xs font-bold transition-all shrink-0 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer ${
+                                      pixCopied
+                                        ? 'bg-emerald-600 text-white'
+                                        : 'bg-[#2D5A27] hover:bg-[#23471f] text-white active:scale-95'
+                                    }`}
+                                  >
+                                    {pixCopied ? (
+                                      <>
+                                        <Check size={14} className="stroke-[3]" />
+                                        <span>Copiado! ✓</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy size={13} />
+                                        <span>Copiar Chave Pix</span>
+                                      </>
+                                    )}
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-900">
+                                  A Chave Pix será enviada na conversa do WhatsApp após a confirmação.
+                                </div>
+                              )}
+                            </div>
+
+                            <p className="text-xs text-stone-600 leading-relaxed bg-emerald-50/60 p-2.5 rounded-lg border border-emerald-100 flex items-start gap-2">
+                              <span className="font-bold text-emerald-800 shrink-0 mt-0.5">ℹ</span>
+                              <span>Após copiar e pagar no seu banco, favor anexar o comprovante na conversa do WhatsApp.</span>
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Se o cliente escolher "Pagar na Entrega": Oculta cópia e exibe aviso */}
+                        {pixPaymentType === 'entrega' && (
+                          <div className="bg-white rounded-xl p-3.5 border border-emerald-200 shadow-2xs animate-in fade-in duration-150">
+                            <p className="text-xs text-stone-700 leading-relaxed flex items-center gap-2">
+                              <CheckCircle size={16} className="text-emerald-600 shrink-0" />
+                              <span>Você pagará via Pix diretamente ao entregador/na retirada.</span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div className="bg-mana-bg border border-mana-gold/20 rounded-xl p-3 mb-4 flex gap-3">
                       <Info size={20} className="text-mana-gold shrink-0 mt-0.5" />
@@ -1960,7 +2140,14 @@ export default function App() {
                         <CreditCard size={16} className="text-mana-gold shrink-0 mt-1" />
                         <div>
                           <p className="text-xs font-bold text-mana-green uppercase tracking-wider mb-1">Pagamento:</p>
-                          <p className="text-sm text-mana-text font-medium capitalize">{paymentMethod}</p>
+                          <p className="text-sm text-mana-text font-medium">
+                            {paymentMethod === 'pix'
+                              ? (pixPaymentType === 'antecipado' ? 'Pix (Antecipado)' : 'Pix (Na Entrega)')
+                              : paymentMethod === 'dinheiro'
+                                ? 'Dinheiro'
+                                : 'Cartão (na entrega)'
+                            }
+                          </p>
                         </div>
                       </div>
                       

@@ -40,7 +40,7 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
       const url = renderQrToDataUrl(customUrl, {
         size: 800,
         margin: 2,
-        colorDark: '#20371E',
+        colorDark: '#2D5A27',
         colorLight: '#FFFFFF',
         ecc: 'M'
       });
@@ -75,7 +75,7 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
       const downloadUrl = renderQrToDataUrl(customUrl, {
         size: size,
         margin: 2,
-        colorDark: '#20371E',
+        colorDark: '#2D5A27',
         colorLight: '#FFFFFF',
         ecc: 'M'
       });
@@ -101,6 +101,30 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <style>{`
+        @media print {
+          body * {
+            visibility: hidden !important;
+          }
+          #care-guide-print-tag, #care-guide-print-tag * {
+            visibility: visible !important;
+          }
+          #care-guide-print-tag {
+            position: fixed !important;
+            left: 50% !important;
+            top: 50% !important;
+            transform: translate(-50%, -50%) !important;
+            width: 100% !important;
+            max-width: 420px !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            border: 2px solid #2D5A27 !important;
+            background: #FFFFFF !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+        }
+      `}</style>
       <div 
         className="bg-[#FAF7F0] border border-[#DDD3C1] w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
         role="dialog"
@@ -110,11 +134,11 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
         {/* Cabeçalho do Modal */}
         <div className="px-6 py-4 bg-[#F4EFE6] border-b border-[#DDD3C1] flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-[#2B4A28] text-white flex items-center justify-center shadow-xs">
+            <div className="w-9 h-9 rounded-xl bg-[#2D5A27] text-white flex items-center justify-center shadow-xs">
               <QrCode size={20} />
             </div>
             <div>
-              <h3 id="qr-modal-title" className="font-serif font-bold text-lg text-[#20371E]">
+              <h3 id="qr-modal-title" className="font-serif font-bold text-lg text-[#2D5A27]">
                 QR Code do Guia de Preparo
               </h3>
               <p className="text-xs text-stone-500">
@@ -138,15 +162,16 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
           {/* Cartão de Visualização / Impressão */}
           <div 
             ref={printRef}
-            className="bg-white border-2 border-[#2B4A28]/20 rounded-2xl p-6 sm:p-8 flex flex-col items-center text-center shadow-sm relative overflow-hidden"
+            id="care-guide-print-tag"
+            className="bg-white border-2 border-[#2D5A27]/25 rounded-2xl p-6 sm:p-8 flex flex-col items-center text-center shadow-sm relative overflow-hidden"
           >
             {/* Tag Decorativa */}
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#2B4A28]/10 text-[#2B4A28] text-xs font-bold uppercase tracking-wider mb-4">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#2D5A27]/10 text-[#2D5A27] text-xs font-bold uppercase tracking-wider mb-4">
               <Sparkles size={13} />
               <span>Acesso Instantâneo</span>
             </div>
 
-            <h4 className="font-serif text-xl sm:text-2xl font-bold text-[#20371E] mb-1">
+            <h4 className="font-serif text-xl sm:text-2xl font-bold text-[#2D5A27] mb-1">
               Guia de Conservação & Preparo
             </h4>
             <p className="text-xs sm:text-sm text-stone-600 max-w-sm mb-5">
@@ -154,12 +179,13 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
             </p>
 
             {/* Imagem do QR Code com Moldura */}
-            <div className="p-3.5 bg-white border-2 border-[#D8CEBC] rounded-2xl shadow-inner mb-4 relative group">
+            <div className="p-3.5 bg-white border-2 border-[#2D5A27]/20 rounded-2xl shadow-inner mb-4 relative group">
               {qrDataUrl ? (
                 <img 
                   src={qrDataUrl} 
                   alt="QR Code Guia de Preparo Maná Saudável" 
                   className="w-48 h-48 sm:w-56 sm:h-56 object-contain rounded-lg"
+                  style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}
                 />
               ) : (
                 <div className="w-48 h-48 sm:w-56 sm:h-56 flex items-center justify-center bg-stone-50 rounded-lg text-stone-400 text-xs animate-pulse">
@@ -168,7 +194,7 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
               )}
             </div>
 
-            <div className="flex items-center gap-2 text-xs font-medium text-[#2B4A28]">
+            <div className="flex items-center gap-2 text-xs font-medium text-[#2D5A27]">
               <Smartphone size={15} />
               <span>Funciona direto na câmera do smartphone (sem app)</span>
             </div>
@@ -184,7 +210,7 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
               type="button"
               onClick={() => handleDownloadPng(true)}
               disabled={downloading || !qrDataUrl}
-              className="flex items-center justify-center gap-2 bg-[#2B4A28] hover:bg-[#20371E] active:scale-[0.98] text-white py-3 px-4 rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-[#2B4A28]/20 transition-all cursor-pointer disabled:opacity-50"
+              className="flex items-center justify-center gap-2 bg-[#2D5A27] hover:bg-[#20371E] active:scale-[0.98] text-white py-3 px-4 rounded-xl font-bold text-xs sm:text-sm shadow-md shadow-[#2D5A27]/20 transition-all cursor-pointer disabled:opacity-50"
             >
               <Download size={16} />
               <span>{downloading ? 'Baixando...' : 'Baixar Imagem (PNG)'}</span>
@@ -204,7 +230,7 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
             <button
               type="button"
               onClick={handlePrintTag}
-              className="flex items-center justify-center gap-2 bg-white hover:bg-stone-50 active:scale-[0.98] text-[#2B4A28] border border-[#2B4A28]/30 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm shadow-xs transition-all cursor-pointer"
+              className="flex items-center justify-center gap-2 bg-white hover:bg-stone-50 active:scale-[0.98] text-[#2D5A27] border border-[#2D5A27]/30 py-3 px-4 rounded-xl font-bold text-xs sm:text-sm shadow-xs transition-all cursor-pointer"
             >
               <Printer size={16} />
               <span>Imprimir Etiqueta</span>
@@ -214,7 +240,7 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
           {/* Dicas Práticas de Aplicação */}
           <div className="bg-[#FAF7F0] border border-[#DDD3C1] rounded-2xl p-4 text-xs text-stone-600 space-y-2.5">
             <div className="font-bold text-[#20371E] flex items-center gap-1.5 text-xs uppercase tracking-wide">
-              <ShieldCheck size={16} className="text-[#2B4A28]" />
+              <ShieldCheck size={16} className="text-[#2D5A27]" />
               <span>Como utilizar na sua operação:</span>
             </div>
             <ul className="space-y-1.5 list-disc list-inside text-stone-600">
@@ -243,7 +269,7 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
                   value={customUrl}
                   onChange={(e) => setCustomUrl(e.target.value)}
                   placeholder="https://sua-loja.com.br/?tab=guia"
-                  className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2B4A28] font-mono text-stone-800"
+                  className="w-full px-3 py-2 text-xs bg-white border border-stone-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#2D5A27] font-mono text-stone-800"
                 />
                 <p className="text-[11px] text-stone-400">
                   Insira aqui o domínio personalizado da sua loja caso utilize um link próprio fixo.
