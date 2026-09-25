@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import QRCode from 'qrcode';
+import { renderQrToDataUrl } from '../utils/qrCodeGenerator';
 import { X, Download, Copy, Check, Printer, ExternalLink, QrCode, Sparkles, Smartphone, ShieldCheck } from 'lucide-react';
 
 interface CareGuideQrModalProps {
@@ -32,32 +32,22 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
     }
   }, []);
 
-  // Gera o QR code sempre que a URL mudar
+  // Gera o QR code sempre que a URL mudar (usando o utilitário nativo leve)
   useEffect(() => {
     if (!customUrl) return;
 
-    let isMounted = true;
-    QRCode.toDataURL(customUrl, {
-      width: 800,
-      margin: 2,
-      color: {
-        dark: '#20371E', // Verde institucional escuro elegante
-        light: '#FFFFFF'
-      },
-      errorCorrectionLevel: 'H' // Alta taxa de correção de erro para impressão
-    })
-      .then(url => {
-        if (isMounted) {
-          setQrDataUrl(url);
-        }
-      })
-      .catch(err => {
-        console.error('Erro ao gerar QR Code:', err);
+    try {
+      const url = renderQrToDataUrl(customUrl, {
+        size: 800,
+        margin: 2,
+        colorDark: '#20371E',
+        colorLight: '#FFFFFF',
+        ecc: 'M'
       });
-
-    return () => {
-      isMounted = false;
-    };
+      setQrDataUrl(url);
+    } catch (err) {
+      console.error('Erro ao gerar QR Code nativo:', err);
+    }
   }, [customUrl]);
 
   const handleCopyLink = async () => {
@@ -78,19 +68,19 @@ export const CareGuideQrModal: React.FC<CareGuideQrModalProps> = ({
     }
   };
 
-  const handleDownloadPng = async (highRes = true) => {
+  const handleDownloadPng = (highRes = true) => {
     try {
       setDownloading(true);
       const size = highRes ? 1200 : 600;
-      const downloadUrl = await QRCode.toDataURL(customUrl, {
-        width: size,
+      const downloadUrl = renderQrToDataUrl(customUrl, {
+        size: size,
         margin: 2,
-        color: {
-          dark: '#20371E',
-          light: '#FFFFFF'
-        },
-        errorCorrectionLevel: 'H'
+        colorDark: '#20371E',
+        colorLight: '#FFFFFF',
+        ecc: 'M'
       });
+
+      if (!downloadUrl) return;
 
       const link = document.createElement('a');
       link.download = `qr-code-guia-de-preparo-${highRes ? 'alta-res' : 'padrao'}.png`;
