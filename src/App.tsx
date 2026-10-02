@@ -7,7 +7,7 @@ import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'rea
 import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard, BookOpen, Search, Sparkles, Tag, Copy, Check } from 'lucide-react';
 import { products as defaultProducts } from './data';
 import { Product, CartItem, InfoSection, Promotion, Coupon, defaultCoupons } from './types';
-import { auth, db, signInWithGoogle, logOut, signInAnonymously } from './firebase';
+import { auth, db, signInWithGoogle, logOut, signInAnonymously, isMasterAdminEmail, syncUserProfile } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, onSnapshot, runTransaction, collection, serverTimestamp, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import Logo from './components/Logo';
@@ -145,36 +145,48 @@ export default function App() {
 
   useEffect(() => {
     let isInitialLoad = true;
+    let userDocUnsubscribe: (() => void) | null = null;
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const authUnsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       setIsAuthReady(true);
 
+      // Limpa listener anterior do documento do usuário
+      if (userDocUnsubscribe) {
+        userDocUnsubscribe();
+        userDocUnsubscribe = null;
+      }
+
       if (currentUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
+        const isMaster = isMasterAdminEmail(currentUser.email);
+        if (isMaster) {
+          setIsAdmin(true);
+        }
+
+        // Sincroniza metadados com segurança sem nunca rebaixar cargos existentes (role)
+        syncUserProfile(currentUser).catch((err) => {
+          console.error("Erro ao sincronizar perfil do usuário:", err);
+        });
+
+        // Escuta o documento do usuário em tempo real no Firestore
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        userDocUnsubscribe = onSnapshot(userDocRef, (userSnap) => {
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
             if (userData.name) setCustomerName(prev => prev || userData.name);
             if (userData.address) setAddress(prev => ({ ...prev, ...userData.address }));
             
-            if (userData.role === 'admin' || currentUser.email === 'brballmaster@gmail.com') {
-              setIsAdmin(true);
-            } else {
-              setIsAdmin(false);
-            }
+            const hasAdminRole = userData.role === 'admin' || isMaster;
+            setIsAdmin(hasAdminRole);
           } else {
-            // New user, check if email is admin
-            if (currentUser.email === 'brballmaster@gmail.com') {
-              setIsAdmin(true);
-            } else {
-              setIsAdmin(false);
-            }
+            setIsAdmin(isMaster);
           }
-        } catch (e) {
-          console.error("Error fetching user data", e);
-          setIsAdmin(false);
-        }
+        }, (err) => {
+          console.warn("Firestore [users/me] listener offline/reconnecting:", err.message);
+          if (isMaster) {
+            setIsAdmin(true);
+          }
+        });
       } else {
         setIsAdmin(false);
         
@@ -191,7 +203,13 @@ export default function App() {
         }
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      authUnsubscribe();
+      if (userDocUnsubscribe) {
+        userDocUnsubscribe();
+      }
+    };
   }, []);
 
   const [isStoreOpen, setIsStoreOpen] = useState(true);
@@ -739,12 +757,12 @@ export default function App() {
           }
         });
 
-        // Update user name if it's an anonymous user or name is missing
+        // Update user name and address safely with merge
         const userRef = doc(db, 'users', user.uid);
-        transaction.update(userRef, { 
+        transaction.set(userRef, { 
           name: customerName,
           address: address // Save address for future use
-        });
+        }, { merge: true });
 
         // Resolve descriptive payment method
         const paymentDisplay = paymentMethod === 'pix'
@@ -928,7 +946,12 @@ export default function App() {
 
   const productsList = dbProducts.length > 0 ? dbProducts : defaultProducts;
 
-  const hasCombos = isCombosEnabled || productsList.some(p => canonicalizeCategory(p.category) === 'Combos');
+  // Produtos visíveis para os clientes (oculta qualquer item onde isVisible === false)
+  const visibleProductsList = useMemo(() => {
+    return productsList.filter(p => p.isVisible !== false);
+  }, [productsList]);
+
+  const hasCombos = isCombosEnabled || visibleProductsList.some(p => canonicalizeCategory(p.category) === 'Combos');
 
   const categoriesList = useMemo(() => {
     const list = ['Todos', 'Salgados', 'Doces'];
@@ -937,7 +960,7 @@ export default function App() {
     }
     const extraCats = Array.from(
       new Set(
-        productsList
+        visibleProductsList
           .map(p => canonicalizeCategory(p.category || ''))
           .filter(Boolean)
       )
@@ -948,10 +971,10 @@ export default function App() {
       }
     });
     return list;
-  }, [hasCombos, productsList]);
+  }, [hasCombos, visibleProductsList]);
 
   const filteredProducts = useMemo(() => {
-    return productsList.filter(product => {
+    return visibleProductsList.filter(product => {
       const prodCategory = canonicalizeCategory(product.category || '');
       const matchesCategory =
         selectedCategory === 'Todos' ||
@@ -965,7 +988,7 @@ export default function App() {
 
       return matchesCategory && matchesSearch;
     });
-  }, [productsList, selectedCategory, searchTerm]);
+  }, [visibleProductsList, selectedCategory, searchTerm]);
 
   const displayCategories = useMemo(() => {
     if (selectedCategory !== 'Todos') {
@@ -1152,7 +1175,7 @@ export default function App() {
         </div>
 
         {isLoading ? (
-          <BannerSkeleton />
+          (specialOfTheDay?.isActive || promotion?.isActive) ? <BannerSkeleton /> : null
         ) : (
           <>
             {promotion && promotion.isActive && (
@@ -1185,13 +1208,17 @@ export default function App() {
               </div>
             )}
 
-            {specialOfTheDay && specialOfTheDay.isActive && (
+            {Boolean(
+              specialOfTheDay &&
+              (specialOfTheDay.isActive === true || specialOfTheDay.showSpecialBanner === true) &&
+              (specialOfTheDay.title?.trim() || specialOfTheDay.description?.trim() || specialOfTheDay.imageUrl?.trim())
+            ) && (
               <div className="mb-10 bg-white rounded-2xl overflow-hidden shadow-md border border-mana-gold/30 flex flex-col md:flex-row transition-opacity duration-300 animate-in fade-in slide-in-from-bottom-4">
                 {specialOfTheDay.imageUrl && (
                   <div className="md:w-2/5 h-48 md:h-auto relative">
                     <img 
                       src={specialOfTheDay.imageUrl} 
-                      alt={specialOfTheDay.title} 
+                      alt={specialOfTheDay.title || 'Especial Maná da Semana'} 
                       className="w-full h-full object-cover"
                       fetchPriority="high"
                       decoding="async"
@@ -1204,8 +1231,12 @@ export default function App() {
                   <div className="inline-block bg-mana-gold text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider mb-3 w-max shadow-sm">
                     {specialOfTheDay.badgeText || 'Especial Maná da Semana'}
                   </div>
-                  <h2 className="text-2xl font-serif font-bold text-mana-green mb-3">{specialOfTheDay.title}</h2>
-                  <p className="text-mana-text-light leading-relaxed whitespace-pre-line">{specialOfTheDay.description}</p>
+                  {specialOfTheDay.title && (
+                    <h2 className="text-2xl font-serif font-bold text-mana-green mb-3">{specialOfTheDay.title}</h2>
+                  )}
+                  {specialOfTheDay.description && (
+                    <p className="text-mana-text-light leading-relaxed whitespace-pre-line">{specialOfTheDay.description}</p>
+                  )}
                 </div>
               </div>
             )}

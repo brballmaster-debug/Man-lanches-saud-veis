@@ -9,6 +9,7 @@ export interface Product {
   category: string;
   isAvailable?: boolean;
   stockQuantity?: number | null;
+  isVisible?: boolean;
   nutrition?: string;
   isFeatured?: boolean;
   isPopular?: boolean;

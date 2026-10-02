@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, isMasterAdminEmail } from '../firebase';
 import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData, Coupon, defaultCoupons } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard } from 'lucide-react';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, EyeOff, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard, Sparkles } from 'lucide-react';
 import Logo from './Logo';
 import CouponManager from './CouponManager';
 import CareGuideQrModal from './CareGuideQrModal';
@@ -199,6 +199,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [specialDescription, setSpecialDescription] = useState('');
   const [specialImageUrl, setSpecialImageUrl] = useState('');
   const [specialIsActive, setSpecialIsActive] = useState(false);
+  const [isSpecialBannerExpanded, setIsSpecialBannerExpanded] = useState(true);
   const [savingSpecial, setSavingSpecial] = useState(false);
   
   const [infoBannerTitle, setInfoBannerTitle] = useState('');
@@ -300,12 +301,18 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       setLoading(false);
     });
 
-    const qUsers = query(collection(db, 'users'), orderBy('createdAt', 'desc'));
+    const qUsers = collection(db, 'users');
     const unsubUsers = onSnapshot(qUsers, (snapshot) => {
       const fetchedUsers = snapshot.docs.map(doc => ({
         uid: doc.id,
         ...doc.data()
       })) as UserDocument[];
+      // Ordena com segurança por data de criação decrescente
+      fetchedUsers.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis?.() || (a.createdAt instanceof Date ? a.createdAt.getTime() : 0);
+        const timeB = b.createdAt?.toMillis?.() || (b.createdAt instanceof Date ? b.createdAt.getTime() : 0);
+        return timeB - timeA;
+      });
       setUsers(fetchedUsers);
     }, (error) => {
       console.warn("Firestore [users] offline/reconnecting:", error.message);
@@ -582,14 +589,23 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   const toggleUserRole = async (userId: string, currentRole: string) => {
+    const targetUser = users.find(u => u.uid === userId);
+    if (isMasterAdminEmail(targetUser?.email)) {
+      showToast("O administrador principal não pode ter seus privilégios alterados.");
+      return;
+    }
     const newRole = currentRole === 'admin' ? 'client' : 'admin';
     setIsUpdatingRole(userId);
     try {
-      await updateDoc(doc(db, 'users', userId), { role: newRole });
-      showToast(`Usuário agora é ${newRole === 'admin' ? 'Administrador' : 'Cliente'}.`);
+      await withTimeout(
+        setDoc(doc(db, 'users', userId), { role: newRole }, { merge: true }),
+        7000
+      );
+      triggerHaptic('success');
+      showToast(`Privilégios atualizados: usuário agora é ${newRole === 'admin' ? 'Administrador' : 'Cliente'}.`);
     } catch (error) {
       console.error("Error updating user role:", error);
-      showToast("Erro ao atualizar privilégios.");
+      showToast("Erro ao atualizar privilégios no banco.");
     } finally {
       setIsUpdatingRole(null);
     }
@@ -644,7 +660,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       // Don't delete the main admin
       const usersSnapshot = await getDocs(collection(db, 'users'));
       const deletePromises = usersSnapshot.docs
-        .filter(d => d.data().email !== 'brballmaster@gmail.com')
+        .filter(d => !isMasterAdminEmail(d.data().email))
         .map(d => deleteDoc(d.ref));
       
       await Promise.all(deletePromises);
@@ -656,6 +672,33 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
     }
   };
 
+  const toggleSpecialBannerActive = async (newActiveState: boolean) => {
+    setSpecialIsActive(newActiveState);
+    try {
+      await withTimeout(
+        setDoc(doc(db, 'settings', 'special'), {
+          title: specialTitle || '',
+          badgeText: specialBadgeText || 'Especial Maná da Semana',
+          description: specialDescription || '',
+          imageUrl: specialImageUrl || '',
+          isActive: newActiveState,
+          showSpecialBanner: newActiveState
+        }, { merge: true }),
+        7000
+      );
+      // Espelha também em settings/store para compatibilidade global
+      setDoc(doc(db, 'settings', 'store'), {
+        showSpecialBanner: newActiveState
+      }, { merge: true }).catch(() => {});
+
+      triggerHaptic('success');
+      showToast(newActiveState ? "Banner Especial ativado no cardápio!" : "Banner Especial desativado e ocultado!");
+    } catch (error) {
+      console.error("Error toggling special banner:", error);
+      showToast("Erro ao alterar ativação do banner.");
+    }
+  };
+
   const saveSpecial = async () => {
     if (savingSpecial) return;
     setSavingSpecial(true);
@@ -663,18 +706,24 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       await withTimeout(
         setDoc(doc(db, 'settings', 'special'), {
           title: specialTitle || '',
-          badgeText: specialBadgeText || '',
+          badgeText: specialBadgeText || 'Especial Maná da Semana',
           description: specialDescription || '',
           imageUrl: specialImageUrl || '',
-          isActive: Boolean(specialIsActive)
-        }),
+          isActive: Boolean(specialIsActive),
+          showSpecialBanner: Boolean(specialIsActive)
+        }, { merge: true }),
         7000
       );
+      // Espelha também em settings/store para compatibilidade global
+      setDoc(doc(db, 'settings', 'store'), {
+        showSpecialBanner: Boolean(specialIsActive)
+      }, { merge: true }).catch(() => {});
+
       triggerHaptic('success');
-      showToast("Especial da semana atualizado!");
+      showToast("Banner Especial salvo com sucesso!");
     } catch (error) {
       console.error("Error saving special:", error);
-      showToast("Erro ao atualizar especial.");
+      showToast("Erro ao salvar banner especial.");
     } finally {
       setSavingSpecial(false);
     }
@@ -922,18 +971,51 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
     }
   };
 
+  const toggleProductVisibility = async (productId: string, currentVisible?: boolean) => {
+    // Se undefined ou true, o novo status passa a ser false. Se false, passa a ser true.
+    const newStatus = currentVisible === false ? true : false;
+    try {
+      await withTimeout(
+        setDoc(doc(db, 'products', productId), { isVisible: newStatus }, { merge: true }),
+        7000
+      );
+      triggerHaptic('medium');
+      showToast(newStatus ? "Produto agora está visível no cardápio!" : "Produto agora está ocultado do cardápio!");
+    } catch (error) {
+      console.error("Error toggling product visibility:", error);
+      showToast("Erro ao alterar visibilidade do produto.");
+    }
+  };
+
   const saveProduct = async () => {
     if (!editingProduct) return;
     setSavingProduct(true);
     try {
+      const isVisibleVal = editingProduct.isVisible !== false;
+      const isAvailableVal = editingProduct.isAvailable !== false;
       if (editingProduct.id) {
-        await setDoc(doc(db, 'products', editingProduct.id), editingProduct);
+        await withTimeout(
+          setDoc(doc(db, 'products', editingProduct.id), {
+            ...editingProduct,
+            isVisible: isVisibleVal,
+            isAvailable: isAvailableVal
+          }, { merge: true }),
+          7000
+        );
         triggerHaptic('success');
         showToast("Produto atualizado com sucesso!");
       } else {
         const newProductRef = doc(collection(db, 'products'));
-        const newProduct = { ...editingProduct, id: newProductRef.id, isAvailable: true };
-        await setDoc(newProductRef, newProduct);
+        const newProduct = { 
+          ...editingProduct, 
+          id: newProductRef.id, 
+          isAvailable: isAvailableVal,
+          isVisible: isVisibleVal
+        };
+        await withTimeout(
+          setDoc(newProductRef, newProduct),
+          7000
+        );
         triggerHaptic('success');
         showToast("Produto adicionado com sucesso!");
       }
@@ -978,7 +1060,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       usage: '',
       imageUrl: '',
       category: '',
-      nutrition: ''
+      nutrition: '',
+      isAvailable: true,
+      isVisible: true
     });
     setProductImageSizeKb(null);
   };
@@ -1779,22 +1863,39 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                 </div>
                               </td>
                               <td className="p-4">
-                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${u.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-gray-100 text-gray-800'}`}>
-                                  {u.role === 'admin' ? 'Admin' : 'Cliente'}
-                                </span>
+                                {(() => {
+                                  const isUserMaster = isMasterAdminEmail(u.email);
+                                  const effectiveRole = isUserMaster ? 'admin' : (u.role || 'client');
+                                  return (
+                                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold inline-flex items-center gap-1 ${
+                                      effectiveRole === 'admin' 
+                                        ? 'bg-purple-100 text-purple-800 border border-purple-200' 
+                                        : 'bg-gray-100 text-gray-700 border border-gray-200'
+                                    }`}>
+                                      {isUserMaster ? '★ Admin Master' : effectiveRole === 'admin' ? 'Admin' : 'Cliente'}
+                                    </span>
+                                  );
+                                })()}
                               </td>
                               <td className="p-4">
-                                <button
-                                  onClick={() => toggleUserRole(u.uid, u.role)}
-                                  disabled={isUpdatingRole === u.uid || u.email === 'brballmaster@gmail.com'}
-                                  className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                                    u.role === 'admin' 
-                                      ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' 
-                                      : 'bg-purple-50 text-purple-600 hover:bg-purple-100'
-                                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                                >
-                                  {isUpdatingRole === u.uid ? '...' : u.role === 'admin' ? 'Remover Admin' : 'Tornar Admin'}
-                                </button>
+                                {(() => {
+                                  const isUserMaster = isMasterAdminEmail(u.email);
+                                  const effectiveRole = isUserMaster ? 'admin' : (u.role || 'client');
+                                  return (
+                                    <button
+                                      onClick={() => toggleUserRole(u.uid, effectiveRole)}
+                                      disabled={isUpdatingRole === u.uid || isUserMaster}
+                                      className={`text-xs font-medium px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
+                                        effectiveRole === 'admin' 
+                                          ? 'bg-gray-100 text-gray-600 hover:bg-gray-200' 
+                                          : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                                      } disabled:opacity-50 disabled:cursor-not-allowed`}
+                                      title={isUserMaster ? 'Administrador principal fixo (não pode ser alterado)' : undefined}
+                                    >
+                                      {isUpdatingRole === u.uid ? '...' : isUserMaster ? 'Admin Fixo' : effectiveRole === 'admin' ? 'Remover Admin' : 'Tornar Admin'}
+                                    </button>
+                                  );
+                                })()}
                               </td>
                               <td className="p-4">
                                 <span className="text-sm font-bold text-mana-green">{userOrdersCount}</span>
@@ -1828,6 +1929,226 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       </button>
                     )}
                   </div>
+
+                  {/* Banner Especial da Semana - Destaque no Topo do Cardápio */}
+                  {!editingProduct && (
+                    <div className="bg-white rounded-2xl p-5 sm:p-6 shadow-sm border border-mana-gold/25 relative overflow-hidden transition-all">
+                      {/* Cabeçalho do Card com Título e Switch de Ativação/Ocultação */}
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-mana-gold/15">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-mana-green/10 text-mana-green flex items-center justify-center shrink-0 shadow-2xs">
+                            <Sparkles size={20} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <h4 className="font-serif text-lg font-bold text-mana-green">
+                                Banner: Especial da Semana
+                              </h4>
+                              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition-colors ${
+                                specialIsActive 
+                                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' 
+                                  : 'bg-gray-100 text-gray-500 border border-gray-200'
+                              }`}>
+                                {specialIsActive ? '● Ativado no Cardápio' : '○ Desativado (Oculto)'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-mana-text-light mt-0.5">
+                              Banner com destaque visual promocional posicionado no topo do catálogo de lanches
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Controles de Ação do Cabeçalho: Switch Liga/Desliga e Botão Expandir */}
+                        <div className="flex items-center gap-3 self-end sm:self-center shrink-0">
+                          <div className="flex items-center gap-2.5 bg-mana-bg/80 border border-mana-gold/20 px-3 py-1.5 rounded-xl">
+                            <span className="text-xs font-semibold text-mana-text">
+                              {specialIsActive ? 'Banner Ativo' : 'Banner Oculto'}
+                            </span>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={specialIsActive}
+                              onClick={() => toggleSpecialBannerActive(!specialIsActive)}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-mana-green focus:ring-offset-2 ${
+                                specialIsActive ? 'bg-mana-green' : 'bg-gray-300'
+                              }`}
+                              title={specialIsActive ? 'Clique para desativar e ocultar do cardápio' : 'Clique para ativar no cardápio'}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                  specialIsActive ? 'translate-x-6' : 'translate-x-1'
+                                }`}
+                              />
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setIsSpecialBannerExpanded(!isSpecialBannerExpanded)}
+                            className="p-2 text-mana-text-light hover:text-mana-text hover:bg-gray-100 rounded-xl transition-colors flex items-center gap-1 text-xs font-medium cursor-pointer border border-transparent hover:border-gray-200"
+                            title={isSpecialBannerExpanded ? 'Recolher formulário' : 'Expandir configuração'}
+                          >
+                            <span className="hidden sm:inline">{isSpecialBannerExpanded ? 'Recolher' : 'Editar'}</span>
+                            <ChevronDown size={17} className={`transform transition-transform duration-200 ${isSpecialBannerExpanded ? 'rotate-180' : ''}`} />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Conteúdo Expansível do Banner Especial */}
+                      {isSpecialBannerExpanded ? (
+                        <div className="mt-5 space-y-4 animate-in fade-in duration-200">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-semibold text-mana-text mb-1">
+                                Texto da Etiqueta (Badge)
+                              </label>
+                              <input
+                                type="text"
+                                value={specialBadgeText}
+                                onChange={(e) => setSpecialBadgeText(e.target.value)}
+                                placeholder="Ex: Especial Maná da Semana"
+                                className="w-full px-3.5 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white text-sm"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-semibold text-mana-text mb-1">
+                                Título do Especial
+                              </label>
+                              <input
+                                type="text"
+                                value={specialTitle}
+                                onChange={(e) => setSpecialTitle(e.target.value)}
+                                placeholder="Ex: Combo Família ou Torta Rústica Integral"
+                                className="w-full px-3.5 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white text-sm"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-mana-text mb-1">
+                              Descrição / Informações do Especial
+                            </label>
+                            <textarea
+                              value={specialDescription}
+                              onChange={(e) => setSpecialDescription(e.target.value)}
+                              placeholder="Descreva os lanches inclusos, benefícios ou sabor do especial..."
+                              rows={3}
+                              className="w-full px-3.5 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white text-sm resize-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-semibold text-mana-text mb-1">
+                              Imagem do Banner
+                            </label>
+                            <div className="flex flex-col sm:flex-row gap-3">
+                              <div className="flex-1">
+                                <input
+                                  type="url"
+                                  value={specialImageUrl}
+                                  onChange={(e) => setSpecialImageUrl(e.target.value)}
+                                  placeholder="Colar link da imagem (https://...)"
+                                  className="w-full px-3.5 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white text-sm"
+                                />
+                              </div>
+                              <div className="flex items-center justify-center text-xs font-bold text-mana-text-light uppercase tracking-wider">OU</div>
+                              <div className="relative flex-1">
+                                <input 
+                                  type="file" 
+                                  accept="image/*"
+                                  onChange={handleImageUpload}
+                                  disabled={isCompressingSpecialImage}
+                                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                                />
+                                <div className="w-full px-3.5 py-2 rounded-lg border border-mana-gold/30 bg-mana-bg text-mana-text flex items-center justify-center gap-2 hover:bg-mana-gold/10 transition-colors text-sm font-medium">
+                                  <Upload size={16} />
+                                  <span>{isCompressingSpecialImage ? 'Otimizando...' : 'Enviar do Computador'}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {specialImageUrl && (
+                            <div className="mt-3 flex flex-col gap-1.5">
+                              <div className="border border-mana-gold/20 rounded-xl overflow-hidden h-40 relative bg-gray-50 shadow-xs">
+                                <img 
+                                  src={specialImageUrl} 
+                                  alt="Preview do Banner" 
+                                  className="w-full h-full object-cover" 
+                                  onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/800x400?text=Imagem+Inv%C3%A1lida')} 
+                                />
+                                <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-xs text-white text-[10px] font-semibold px-2 py-0.5 rounded">
+                                  Pré-visualização
+                                </div>
+                              </div>
+
+                              {/* Indicador Visual de Compressão do Banner */}
+                              {isCompressingSpecialImage ? (
+                                <span className="text-xs font-medium text-mana-green bg-mana-green/10 border border-mana-green/20 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit animate-pulse">
+                                  <div className="w-3 h-3 border-2 border-mana-green border-t-transparent rounded-full animate-spin" />
+                                  Otimizando imagem no navegador...
+                                </span>
+                              ) : (specialImageSizeKb ?? getImageSizeKb(specialImageUrl)) !== null ? (
+                                (specialImageSizeKb ?? getImageSizeKb(specialImageUrl))! <= 300 ? (
+                                  <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                    <CheckCircle size={13} className="text-emerald-600" />
+                                    Otimizada: ~{specialImageSizeKb ?? getImageSizeKb(specialImageUrl)} KB (Pronta para salvar)
+                                  </span>
+                                ) : (
+                                  <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                    <AlertCircle size={13} className="text-amber-600" />
+                                    Tamanho: ~{specialImageSizeKb ?? getImageSizeKb(specialImageUrl)} KB (Recomendado abaixo de 300 KB)
+                                  </span>
+                                )
+                              ) : specialImageUrl.startsWith('http') ? (
+                                <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200/70 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
+                                  Link externo da web
+                                </span>
+                              ) : null}
+                            </div>
+                          )}
+
+                          <div className="pt-3 border-t border-mana-gold/15 flex items-center justify-between">
+                            <span className="text-xs text-mana-text-light">
+                              {specialIsActive ? '✓ Visível para todos os clientes no aplicativo' : '○ Banner pausado e ocultado do aplicativo'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={saveSpecial}
+                              disabled={savingSpecial || isCompressingSpecialImage}
+                              className="bg-mana-green hover:bg-mana-green-dark text-white px-5 py-2 rounded-xl font-bold text-xs sm:text-sm transition-all shadow-md shadow-mana-green/20 disabled:opacity-70 flex items-center gap-2 cursor-pointer"
+                            >
+                              {savingSpecial || isCompressingSpecialImage ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              ) : (
+                                <CheckCircle size={17} />
+                              )}
+                              <span>Salvar Banner</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Versão compacta quando recolhido */
+                        <div className="mt-3 flex items-center justify-between text-xs text-mana-text-light bg-mana-bg/50 px-3.5 py-2.5 rounded-xl border border-mana-gold/15">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-semibold text-mana-text truncate">
+                              {specialTitle ? `"${specialTitle}"` : 'Sem título configurado'}
+                            </span>
+                            <span className="text-stone-400">•</span>
+                            <span className="truncate">{specialBadgeText}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsSpecialBannerExpanded(true)}
+                            className="text-mana-green font-semibold hover:underline shrink-0 ml-2 cursor-pointer"
+                          >
+                            Expandir e editar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {editingProduct ? (
                     <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
@@ -1981,6 +2302,47 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                           </div>
                         )}
 
+                        {/* Opção de Visibilidade do Produto no Cardápio */}
+                        <div className="mt-5 p-4 rounded-xl border border-mana-gold/30 bg-mana-bg/60 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-xl transition-colors ${
+                              editingProduct.isVisible !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-200 text-gray-600'
+                            }`}>
+                              {editingProduct.isVisible !== false ? <Eye size={20} /> : <EyeOff size={20} />}
+                            </div>
+                            <div>
+                              <h5 className="text-sm font-bold text-mana-text">
+                                Exibir no cardápio dos clientes
+                              </h5>
+                              <p className="text-xs text-mana-text-light">
+                                {editingProduct.isVisible !== false 
+                                  ? 'O lanche será exibido normalmente para todos os clientes.' 
+                                  : 'O lanche ficará 100% ocultado da visualização pública e da busca.'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={editingProduct.isVisible !== false}
+                            onClick={() => setEditingProduct({
+                              ...editingProduct,
+                              isVisible: editingProduct.isVisible === false ? true : false
+                            })}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-mana-green focus:ring-offset-2 ${
+                              editingProduct.isVisible !== false ? 'bg-mana-green' : 'bg-gray-300'
+                            }`}
+                            title={editingProduct.isVisible !== false ? 'Desativar visibilidade' : 'Ativar visibilidade'}
+                          >
+                            <span
+                              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-xs transition-transform ${
+                                editingProduct.isVisible !== false ? 'translate-x-6' : 'translate-x-1'
+                              }`}
+                            />
+                          </button>
+                        </div>
+
                         <div className="pt-4 border-t border-mana-gold/20 flex justify-end gap-3">
                           <button
                             onClick={() => {
@@ -1994,7 +2356,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                           <button
                             onClick={saveProduct}
                             disabled={savingProduct || isCompressingProductImage}
-                            className="bg-mana-green hover:bg-mana-green-dark text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-70 flex items-center gap-2"
+                            className="bg-mana-green hover:bg-mana-green-dark text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-70 flex items-center gap-2 cursor-pointer"
                           >
                             {savingProduct || isCompressingProductImage ? (
                               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -2007,37 +2369,107 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       </div>
                     ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {products.map(product => (
-                        <div key={product.id} className="bg-white rounded-xl p-4 shadow-sm border border-mana-gold/20 flex gap-4 items-center">
-                          <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0 border border-mana-gold/10">
-                            <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                      {products.map(product => {
+                        const isVisible = product.isVisible !== false;
+                        return (
+                          <div 
+                            key={product.id} 
+                            className={`bg-white rounded-2xl p-4 shadow-sm border transition-all flex flex-col justify-between gap-3 ${
+                              !isVisible 
+                                ? 'border-gray-200 bg-gray-50/75 opacity-80' 
+                                : 'border-mana-gold/20'
+                            }`}
+                          >
+                            <div className="flex gap-4 items-center">
+                              <div className="w-20 h-20 rounded-xl overflow-hidden flex-shrink-0 border border-mana-gold/10 relative bg-gray-100">
+                                {product.imageUrl ? (
+                                  <img src={product.imageUrl} alt={product.name} className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center text-gray-400">
+                                    <Utensils size={24} />
+                                  </div>
+                                )}
+                                {!isVisible && (
+                                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                    <span className="text-[10px] font-bold text-white uppercase tracking-wider bg-black/70 px-1.5 py-0.5 rounded">Oculto</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h4 className="font-bold text-mana-green truncate">{product.name}</h4>
+                                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                    isVisible 
+                                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
+                                      : 'bg-gray-100 text-gray-500 border border-gray-300'
+                                  }`}>
+                                    {isVisible ? 'Visível' : 'Oculto'}
+                                  </span>
+                                </div>
+                                <p className="text-xs text-mana-text-light truncate mt-0.5">{product.category}</p>
+                                <p className="font-semibold text-mana-text mt-1 text-sm">R$ {product.price.toFixed(2)}</p>
+                              </div>
+                              <div className="flex gap-1.5 items-center shrink-0">
+                                <button
+                                  onClick={() => {
+                                    setEditingProduct(product);
+                                    setProductImageSizeKb(getImageSizeKb(product.imageUrl));
+                                  }}
+                                  className="p-2 bg-mana-gold/10 text-mana-gold hover:bg-mana-gold hover:text-white rounded-xl transition-colors cursor-pointer"
+                                  title="Editar Produto"
+                                >
+                                  <Settings size={18} />
+                                </button>
+                                <button
+                                  onClick={() => deleteProduct(product.id)}
+                                  className="p-2 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-colors cursor-pointer"
+                                  title="Excluir Produto"
+                                >
+                                  <Trash2 size={18} />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Linha de controle rápido de Visibilidade no Cardápio */}
+                            <div className="pt-2.5 border-t border-gray-100 flex items-center justify-between">
+                              <div className="flex items-center gap-1.5 text-xs text-mana-text min-w-0">
+                                {isVisible ? (
+                                  <span className="inline-flex items-center gap-1 text-emerald-700 font-medium truncate">
+                                    <Eye size={14} className="text-emerald-600 shrink-0" />
+                                    Exibido no cardápio
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-gray-500 font-medium truncate">
+                                    <EyeOff size={14} className="text-gray-400 shrink-0" />
+                                    Oculto dos clientes
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
+                                <span className="text-[11px] font-semibold text-mana-text-light">
+                                  {isVisible ? 'Visível' : 'Oculto'}
+                                </span>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={isVisible}
+                                  onClick={() => toggleProductVisibility(product.id, isVisible)}
+                                  className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-mana-green ${
+                                    isVisible ? 'bg-mana-green' : 'bg-gray-300'
+                                  }`}
+                                  title={isVisible ? 'Clique para ocultar do cardápio' : 'Clique para exibir no cardápio'}
+                                >
+                                  <span
+                                    className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow-xs transition-transform ${
+                                      isVisible ? 'translate-x-5' : 'translate-x-1'
+                                    }`}
+                                  />
+                                </button>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex-1">
-                            <h4 className="font-bold text-mana-green">{product.name}</h4>
-                            <p className="text-sm text-mana-text-light">{product.category}</p>
-                            <p className="font-medium text-mana-text mt-1">R$ {product.price.toFixed(2)}</p>
-                          </div>
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingProduct(product);
-                                setProductImageSizeKb(getImageSizeKb(product.imageUrl));
-                              }}
-                              className="p-2 bg-mana-gold/10 text-mana-gold hover:bg-mana-gold hover:text-white rounded-lg transition-colors"
-                              title="Editar Produto"
-                            >
-                              <Settings size={20} />
-                            </button>
-                            <button
-                              onClick={() => deleteProduct(product.id)}
-                              className="p-2 bg-red-50 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-colors"
-                              title="Excluir Produto"
-                            >
-                              <Trash2 size={20} />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -2757,136 +3189,6 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                     showToast={showToast}
                     triggerHaptic={triggerHaptic}
                   />
-
-                  {/* Banner Especial */}
-                  <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20">
-                    <h3 className="font-serif text-xl font-bold text-mana-green mb-4">Banner: Especial Maná da Semana</h3>
-                    
-                    <div className="space-y-4">
-                      <div className="flex items-center gap-3 mb-4">
-                        <label className="relative inline-flex items-center cursor-pointer">
-                          <input 
-                            type="checkbox" 
-                            className="sr-only peer"
-                            checked={specialIsActive}
-                            onChange={(e) => setSpecialIsActive(e.target.checked)}
-                          />
-                          <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-mana-green"></div>
-                        </label>
-                        <span className="font-medium text-mana-text">Ativar Banner na Tela Inicial</span>
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Texto da Etiqueta (Badge)</label>
-                        <input
-                          type="text"
-                          value={specialBadgeText}
-                          onChange={(e) => setSpecialBadgeText(e.target.value)}
-                          placeholder="Ex: Especial Maná da Semana"
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Título do Especial</label>
-                        <input
-                          type="text"
-                          value={specialTitle}
-                          onChange={(e) => setSpecialTitle(e.target.value)}
-                          placeholder="Ex: Combo Família"
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Descrição / Informações</label>
-                        <textarea
-                          value={specialDescription}
-                          onChange={(e) => setSpecialDescription(e.target.value)}
-                          placeholder="Descreva o especial da semana..."
-                          rows={3}
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white resize-none"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Imagem do Banner</label>
-                        <div className="flex flex-col sm:flex-row gap-3">
-                          <div className="flex-1">
-                            <input
-                              type="url"
-                              value={specialImageUrl}
-                              onChange={(e) => setSpecialImageUrl(e.target.value)}
-                              placeholder="Colar URL da imagem..."
-                              className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
-                            />
-                          </div>
-                          <div className="flex items-center justify-center text-sm font-medium text-mana-text-light">OU</div>
-                          <div className="relative flex-1">
-                            <input 
-                              type="file" 
-                              accept="image/*"
-                              onChange={handleImageUpload}
-                              disabled={isCompressingSpecialImage}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-                            />
-                            <div className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 bg-mana-bg text-mana-text flex items-center justify-center gap-2 hover:bg-mana-gold/10 transition-colors">
-                              <Upload size={18} />
-                              <span>{isCompressingSpecialImage ? 'Otimizando...' : 'Enviar do Computador'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {specialImageUrl && (
-                        <div className="mt-4 flex flex-col gap-1.5">
-                          <div className="border border-mana-gold/20 rounded-lg overflow-hidden h-40 relative bg-gray-50 shadow-xs">
-                            <img src={specialImageUrl} alt="Preview" className="w-full h-full object-cover" onError={(e) => (e.currentTarget.src = 'https://via.placeholder.com/800x400?text=Imagem+Inv%C3%A1lida')} />
-                            <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-xs text-white text-[10px] font-semibold px-2 py-0.5 rounded">Preview da Imagem</div>
-                          </div>
-
-                          {/* Indicador Visual de Compressão do Banner */}
-                          {isCompressingSpecialImage ? (
-                            <span className="text-xs font-medium text-mana-green bg-mana-green/10 border border-mana-green/20 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit animate-pulse">
-                              <div className="w-3 h-3 border-2 border-mana-green border-t-transparent rounded-full animate-spin" />
-                              Otimizando imagem no navegador...
-                            </span>
-                          ) : (specialImageSizeKb ?? getImageSizeKb(specialImageUrl)) !== null ? (
-                            (specialImageSizeKb ?? getImageSizeKb(specialImageUrl))! <= 300 ? (
-                              <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
-                                <CheckCircle size={13} className="text-emerald-600" />
-                                Otimizada: ~{specialImageSizeKb ?? getImageSizeKb(specialImageUrl)} KB (Pronta para salvar)
-                              </span>
-                            ) : (
-                              <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
-                                <AlertCircle size={13} className="text-amber-600" />
-                                Tamanho: ~{specialImageSizeKb ?? getImageSizeKb(specialImageUrl)} KB (Recomendado abaixo de 300 KB)
-                              </span>
-                            )
-                          ) : specialImageUrl.startsWith('http') ? (
-                            <span className="text-xs font-medium text-blue-700 bg-blue-50 border border-blue-200/70 px-2.5 py-1 rounded-md mt-1 inline-flex items-center gap-1.5 w-fit">
-                              Link externo da web
-                            </span>
-                          ) : null}
-                        </div>
-                      )}
-
-                      <div className="pt-4 border-t border-mana-gold/20 flex justify-end">
-                        <button
-                          onClick={saveSpecial}
-                          disabled={savingSpecial || isCompressingSpecialImage}
-                          className="bg-mana-green hover:bg-mana-green-dark text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-70 flex items-center gap-2"
-                        >
-                          {savingSpecial || isCompressingSpecialImage ? (
-                            <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                          ) : (
-                            <CheckCircle size={18} />
-                          )}
-                          Salvar Banner
-                        </button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               )}
 
