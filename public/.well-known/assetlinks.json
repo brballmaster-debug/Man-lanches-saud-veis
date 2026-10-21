@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.mana.lanches",
+    "sha256_cert_fingerprints": ["EE:07:94:C4:3C:C4:95:07:5F:D1:75:A4:3F:2F:95:DB:9F:75:41:43:F6:BF:7D:F4:4F:62:7D:13:E0:79:58:66"]
+  }
+}]
