@@ -18,9 +18,12 @@
             "complement": { "type": "string" }
           }
         },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastLoginAt": { "type": "string", "format": "date-time" },
+        "source": { "type": "string" },
+        "isAnonymous": { "type": "boolean" }
       },
-      "required": ["uid", "email", "role"]
+      "required": ["uid", "role"]
     },
     "Order": {
       "title": "Order",

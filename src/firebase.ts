@@ -54,6 +54,53 @@ export const db: Firestore = (() => {
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
+}
+
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
+    },
+    operationType,
+    path
+  };
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  return errInfo;
+}
+
 export const MASTER_ADMIN_EMAILS = ['brballmaster@gmail.com'];
 
 export const isMasterAdminEmail = (email?: string | null): boolean => {
@@ -73,7 +120,16 @@ export const syncUserProfile = async (user: any, additionalData?: { name?: strin
 
   try {
     const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
+    let userSnap;
+    try {
+      userSnap = await getDoc(userRef);
+    } catch (readError: any) {
+      if (readError?.code === 'permission-denied') {
+        handleFirestoreError(readError, OperationType.GET, `users/${user.uid}`);
+      }
+      throw readError;
+    }
+
     const isMaster = isMasterAdminEmail(user.email);
 
     if (!userSnap.exists()) {
@@ -89,7 +145,14 @@ export const syncUserProfile = async (user: any, additionalData?: { name?: strin
       if (additionalData?.source) {
         initialData.source = additionalData.source;
       }
-      await setDoc(userRef, initialData);
+      try {
+        await setDoc(userRef, initialData);
+      } catch (createError: any) {
+        if (createError?.code === 'permission-denied') {
+          handleFirestoreError(createError, OperationType.CREATE, `users/${user.uid}`);
+        }
+        throw createError;
+      }
       return initialData;
     } else {
       const existingData = userSnap.data() || {};
@@ -113,7 +176,14 @@ export const syncUserProfile = async (user: any, additionalData?: { name?: strin
         updates.role = 'admin';
       }
 
-      await setDoc(userRef, updates, { merge: true });
+      try {
+        await setDoc(userRef, updates, { merge: true });
+      } catch (updateError: any) {
+        if (updateError?.code === 'permission-denied') {
+          handleFirestoreError(updateError, OperationType.UPDATE, `users/${user.uid}`);
+        }
+        throw updateError;
+      }
       return { ...existingData, ...updates };
     }
   } catch (error) {

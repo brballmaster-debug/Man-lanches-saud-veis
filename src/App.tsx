@@ -2304,7 +2304,7 @@ export default function App() {
                       }) ? 'bg-stone-400 cursor-not-allowed opacity-60' : ''
                     }`}
                   >
-                    <span className="text-sm font-bold">Continuar para Entrega</span>
+                    <span className="text-sm font-bold">Continuar Pedido</span>
                     <span className="flex items-center gap-1.5 text-sm font-bold">
                       R$ {cartTotal.toFixed(2)}
                       <ChevronRight size={18} />

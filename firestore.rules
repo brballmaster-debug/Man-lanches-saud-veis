@@ -54,21 +54,22 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        (request.auth.token.email == "brballmaster@gmail.com" ||
+        (('email' in request.auth.token && (request.auth.token.email == "brballmaster@gmail.com" || request.auth.token.email.lower() == "brballmaster@gmail.com")) ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'client') == 'admin'));
     }
 
     function isValidUser(data) {
-      let allowedFields = ['uid', 'name', 'email', 'role', 'address', 'createdAt', 'source', 'isAnonymous'];
+      let allowedFields = ['uid', 'name', 'email', 'role', 'address', 'createdAt', 'lastLoginAt', 'source', 'isAnonymous'];
       
       return data.keys().hasOnly(allowedFields) &&
              data.uid == request.auth.uid &&
-             data.email is string &&
+             (!('email' in data) || data.email is string) &&
              (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
-             data.role in ['admin', 'client'] &&
+             (!('role' in data) || data.role in ['admin', 'client']) &&
              (!('address' in data) || data.address is map) &&
-             data.createdAt is timestamp &&
+             (!('createdAt' in data) || data.createdAt is timestamp) &&
+             (!('lastLoginAt' in data) || data.lastLoginAt is timestamp) &&
              (!('source' in data) || (data.source is string && data.source.size() <= 50)) &&
              (!('isAnonymous' in data) || data.isAnonymous is bool);
     }
@@ -99,9 +100,9 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if isOwner(userId) && isValidUser(request.resource.data) && 
-                      request.resource.data.keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+                      request.resource.data.keys().hasAll(['uid', 'role']) &&
                       (request.resource.data.role == 'client' || isAdmin());
-      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && request.resource.data.role == resource.data.role) || isAdmin();
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && (request.resource.data.get('role', 'client') == resource.data.get('role', 'client') || isAdmin())) || isAdmin();
       allow delete: if isAdmin();
     }
 
