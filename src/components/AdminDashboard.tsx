@@ -204,6 +204,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [homeTitle, setHomeTitle] = useState('Maná');
   const [homeSubtitle, setHomeSubtitle] = useState('Lanches Saudáveis');
   const [logoUrl, setLogoUrl] = useState('');
+  const [appIconUrl, setAppIconUrl] = useState('');
   const [logoAspectRatio, setLogoAspectRatio] = useState<'16:9' | 'auto' | 'square'>('16:9');
   const [logoScale, setLogoScale] = useState<'md' | 'lg' | 'xl'>('lg');
   const [previewBg, setPreviewBg] = useState<'creme' | 'white' | 'dark'>('creme');
@@ -264,6 +265,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
 
   const [isCompressingLogo, setIsCompressingLogo] = useState(false);
   const [logoImageSizeKb, setLogoImageSizeKb] = useState<number | null>(null);
+
+  const [isCompressingAppIcon, setIsCompressingAppIcon] = useState(false);
+  const [appIconImageSizeKb, setAppIconImageSizeKb] = useState<number | null>(null);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [stockSearchTerm, setStockSearchTerm] = useState('');
@@ -370,6 +374,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
         const fetchedLogo = data.logoUrl || '';
         setLogoUrl(fetchedLogo);
+        const fetchedAppIcon = data.appIconUrl || data.twaIconUrl || '';
+        setAppIconUrl(fetchedAppIcon);
         setLogoAspectRatio(data.logoAspectRatio || '16:9');
         setLogoScale(data.logoScale || 'lg');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
@@ -563,6 +569,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         homeTitle: homeTitle || 'Maná',
         homeSubtitle: homeSubtitle || 'Lanches Saudáveis',
         logoUrl: logoUrl || '',
+        appIconUrl: (appIconUrl || '').trim(),
+        twaIconUrl: (appIconUrl || '').trim(),
         logoAspectRatio: logoAspectRatio || '16:9',
         logoScale: logoScale || 'lg',
         catalogTitle: catalogTitle || 'Nosso Catálogo',
@@ -1039,6 +1047,42 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       showToast("Erro ao processar logo.");
     } finally {
       setIsCompressingLogo(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleAppIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.type === 'image/svg+xml') {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        if (event.target?.result) {
+          const res = event.target.result as string;
+          setAppIconUrl(res);
+          setAppIconImageSizeKb(getImageSizeKb(res));
+          showToast("Ícone TWA/PWA (SVG) carregado com sucesso!");
+        }
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+      return;
+    }
+
+    setIsCompressingAppIcon(true);
+    try {
+      const targetMime = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+      // Para o ícone do app TWA e PWA, 512x512 quadrado é a resolução padrão de alta nitidez
+      const { base64, sizeKb } = await compressImage(file, 512, 512, 0.85, targetMime);
+      setAppIconUrl(base64);
+      setAppIconImageSizeKb(sizeKb);
+      showToast(`Ícone do app otimizado com sucesso: ~${sizeKb} KB!`);
+    } catch (error) {
+      console.error("Erro na compressão do ícone do app:", error);
+      showToast("Erro ao processar ícone do app.");
+    } finally {
+      setIsCompressingAppIcon(false);
       e.target.value = '';
     }
   };
@@ -3632,6 +3676,196 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                               </span>
                               <span className="font-medium text-mana-gold">
                                 {logoAspectRatio === '16:9' ? 'Área ampla 16:9 liberada' : 'Área 1:1'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Ícone do Aplicativo TWA Android & PWA */}
+                      <div className="md:col-span-2 pt-6 border-t border-mana-gold/20">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Smartphone size={20} className="text-mana-green" />
+                              <label className="text-base font-bold text-mana-green">Ícone do Aplicativo (TWA Android & PWA)</label>
+                              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1">
+                                <Sparkles size={11} /> TWA & Web App
+                              </span>
+                            </div>
+                            <p className="text-xs text-mana-text-light mt-0.5">
+                              Personalize o ícone oficial exibido na tela inicial do celular Android (APK TWA), no atalho do PWA e no navegador (Favicon). Formato ideal: 1:1 quadrado (512x512) ou vetor SVG.
+                            </p>
+                          </div>
+                          {appIconUrl && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAppIconUrl('');
+                                setAppIconImageSizeKb(null);
+                                showToast("Ícone padrão restaurado. Clique em Salvar Personalização.");
+                              }}
+                              className="text-xs text-red-600 hover:text-red-800 font-semibold underline self-start sm:self-auto transition-colors flex items-center gap-1"
+                            >
+                              <RotateCcw size={13} />
+                              Restaurar Ícone Padrão
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                          {/* Coluna de Controles (Upload, URL, Ações Rápidas) */}
+                          <div className="lg:col-span-7 space-y-4">
+                            <div>
+                              <label className="block text-xs font-semibold text-mana-text mb-1">
+                                Link direto do ícone (URL externa ou Base64):
+                              </label>
+                              <input
+                                type="text"
+                                value={appIconUrl}
+                                onChange={(e) => {
+                                  setAppIconUrl(e.target.value);
+                                  setAppIconImageSizeKb(getImageSizeKb(e.target.value));
+                                }}
+                                placeholder="https://exemplo.com/meu-icone-512x512.png"
+                                className="w-full px-4 py-2 text-sm rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white shadow-inner font-mono text-xs"
+                              />
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-3">
+                              <label className={`relative inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border border-mana-gold/40 bg-mana-bg hover:bg-mana-gold/15 text-mana-green font-semibold text-xs cursor-pointer transition-colors shadow-sm ${isCompressingAppIcon ? 'opacity-60 pointer-events-none' : ''}`}>
+                                <Upload size={16} className="text-mana-gold" />
+                                <span>{isCompressingAppIcon ? 'Otimizando ícone...' : 'Enviar Ícone (PNG, SVG, WEBP)'}</span>
+                                <input
+                                  type="file"
+                                  accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                                  onChange={handleAppIconUpload}
+                                  disabled={isCompressingAppIcon}
+                                  className="sr-only"
+                                />
+                              </label>
+
+                              {logoUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAppIconUrl(logoUrl);
+                                    setAppIconImageSizeKb(getImageSizeKb(logoUrl));
+                                    showToast("Imagem da logo copiada para o ícone do aplicativo!");
+                                  }}
+                                  className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-mana-gold/30 bg-white hover:bg-mana-bg text-mana-text text-xs font-medium transition-colors shadow-xs cursor-pointer"
+                                  title="Usar a mesma imagem definida no logotipo"
+                                >
+                                  <Copy size={13} className="text-mana-green" />
+                                  <span>Usar imagem do Logotipo</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Badge informativa do Ícone */}
+                            {isCompressingAppIcon ? (
+                              <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 p-2.5 rounded-lg border border-amber-200">
+                                <div className="w-3.5 h-3.5 border-2 border-amber-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                                <span>Comprimindo e formatando imagem quadrada para 512x512...</span>
+                              </div>
+                            ) : appIconUrl ? (
+                              <div className="flex items-center gap-2 text-xs text-emerald-800 bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
+                                <Check size={14} className="text-emerald-600 shrink-0" />
+                                <span className="font-medium">
+                                  Ícone personalizado pronto para salvar.
+                                  {appIconImageSizeKb ? ` (${appIconImageSizeKb} KB otimizado)` : ''}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 text-xs text-mana-text-light bg-mana-bg/50 p-2.5 rounded-lg border border-mana-gold/20">
+                                <Info size={14} className="text-mana-gold shrink-0" />
+                                <span>Usando o ícone padrão oficial da Maná (/logo.png?v=5). Envie uma imagem para substituir.</span>
+                              </div>
+                            )}
+
+                            {/* Card de Informações Técnicas */}
+                            <div className="bg-mana-bg/30 rounded-xl p-3 border border-mana-gold/20 text-[11px] text-mana-text-light space-y-1.5">
+                              <div className="font-semibold text-mana-green flex items-center gap-1.5">
+                                <Smartphone size={13} />
+                                <span>Onde este ícone é aplicado:</span>
+                              </div>
+                              <ul className="list-disc list-inside space-y-1 pl-1">
+                                <li><strong>APK TWA Android:</strong> Ícone do aplicativo instalado no launcher do celular.</li>
+                                <li><strong>Web App Manifest:</strong> Ícone gerado dinamicamente para atalhos PWA (Any e Maskable).</li>
+                                <li><strong>Navegadores:</strong> Favicon e Apple Touch Icon para navegadores móveis e desktop.</li>
+                              </ul>
+                            </div>
+                          </div>
+
+                          {/* Coluna de Prévia Visual (Mockup de Smartphone e Favicon) */}
+                          <div className="lg:col-span-5 bg-mana-bg/40 rounded-xl p-4 border border-mana-gold/20 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-bold text-mana-green uppercase tracking-wide flex items-center gap-1.5">
+                                <Eye size={13} /> Prévia no Celular (Android)
+                              </span>
+                              <span className="text-[10px] bg-white px-2 py-0.5 rounded border border-mana-gold/30 text-mana-text-light font-mono">
+                                512 × 512
+                              </span>
+                            </div>
+
+                            {/* Mockup do Ícone na Tela Inicial do Android */}
+                            <div className="relative rounded-2xl bg-gradient-to-b from-slate-900 via-slate-800 to-slate-950 p-4 border border-slate-700/50 shadow-inner overflow-hidden flex flex-col items-center justify-center min-h-[170px]">
+                              {/* Barra de Status simulada */}
+                              <div className="absolute top-2 left-3 right-3 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                                <span>12:00</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span>5G</span>
+                                  <span>100%</span>
+                                </div>
+                              </div>
+
+                              {/* Ícone de App Android com squircle e sombra suave */}
+                              <div className="flex flex-col items-center gap-2 mt-2">
+                                <div className="relative group">
+                                  <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-2xl bg-white shadow-xl shadow-black/40 ring-2 ring-white/20 p-2 flex items-center justify-center overflow-hidden transition-transform duration-200 hover:scale-105">
+                                    <img 
+                                      src={appIconUrl || logoUrl || '/logo.png?v=5'} 
+                                      alt="Ícone do Aplicativo"
+                                      className="w-full h-full object-contain"
+                                      onError={(e) => {
+                                        (e.target as HTMLImageElement).src = '/logo.png?v=5';
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                                <span className="text-xs font-semibold text-white tracking-wide drop-shadow-md">
+                                  Maná
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Prévia Favicon do Navegador */}
+                            <div className="rounded-lg bg-white p-2.5 border border-mana-gold/20 flex items-center gap-2 text-xs">
+                              <div className="w-5 h-5 rounded bg-mana-bg flex items-center justify-center shrink-0 overflow-hidden border border-gray-200">
+                                <img 
+                                  src={appIconUrl || logoUrl || '/logo.png?v=5'} 
+                                  alt="Favicon" 
+                                  className="w-4 h-4 object-contain"
+                                  onError={(e) => {
+                                    (e.target as HTMLImageElement).src = '/logo.png?v=5';
+                                  }}
+                                />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-medium text-mana-text truncate">Maná - Lanches Saudáveis</p>
+                                <p className="text-[10px] text-mana-text-light font-mono truncate">mana-lanches.web.app</p>
+                              </div>
+                              <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 shrink-0">
+                                Favicon
+                              </span>
+                            </div>
+
+                            <div className="flex items-center justify-between text-[11px] text-mana-text-light px-1">
+                              <span>
+                                {appIconUrl ? '✓ Ícone personalizado configurado' : '✓ Ícone padrão ativo'}
+                              </span>
+                              <span className="font-medium text-mana-gold">
+                                Proporção 1:1
                               </span>
                             </div>
                           </div>

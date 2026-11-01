@@ -223,6 +223,7 @@ export default function App() {
   const [homeTitle, setHomeTitle] = useState('Maná');
   const [homeSubtitle, setHomeSubtitle] = useState('Lanches Saudáveis');
   const [logoUrl, setLogoUrl] = useState('');
+  const [appIconUrl, setAppIconUrl] = useState('');
   const [logoAspectRatio, setLogoAspectRatio] = useState<'16:9' | 'auto' | 'square'>('16:9');
   const [logoScale, setLogoScale] = useState<'md' | 'lg' | 'xl'>('lg');
   const [catalogTitle, setCatalogTitle] = useState('Nosso Catálogo');
@@ -230,6 +231,64 @@ export default function App() {
   const [catalogBadge, setCatalogBadge] = useState('Produção limitada');
   const [whatsappNumber, setWhatsappNumber] = useState('5535998579552');
   const [promotion, setPromotion] = useState<Promotion | null>(null);
+
+  // Sincroniza dinamicamente os ícones do aplicativo (PWA e TWA Android) no navegador
+  useEffect(() => {
+    const activeAppIcon = appIconUrl || logoUrl || '/logo.png?v=5';
+    
+    // 1. Atualiza favicons e apple-touch-icon no <head>
+    const updateLinkTag = (rel: string, href: string) => {
+      let link = document.querySelector(`link[rel='${rel}']`) as HTMLLinkElement;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = rel;
+        document.head.appendChild(link);
+      }
+      link.href = href;
+    };
+
+    updateLinkTag('icon', activeAppIcon);
+    updateLinkTag('shortcut icon', activeAppIcon);
+    updateLinkTag('apple-touch-icon', activeAppIcon);
+
+    // 2. Atualiza dinamicamente o Web App Manifest para navegadores e TWA Android
+    try {
+      const dynamicManifest = {
+        name: homeTitle ? `${homeTitle} Lanches Saudáveis` : "Maná Lanches Saudáveis",
+        short_name: homeTitle || "Maná",
+        description: "Catálogo e aplicativo de pedidos para lanches saudáveis.",
+        start_url: "/",
+        display: "standalone",
+        orientation: "portrait",
+        background_color: "#E8DFCE",
+        theme_color: "#2D5A27",
+        icons: [
+          {
+            src: activeAppIcon,
+            sizes: "192x192 512x512",
+            type: activeAppIcon.startsWith('data:image/svg') || activeAppIcon.endsWith('.svg') ? "image/svg+xml" : "image/png",
+            purpose: "any"
+          },
+          {
+            src: activeAppIcon,
+            sizes: "192x192 512x512",
+            type: activeAppIcon.startsWith('data:image/svg') || activeAppIcon.endsWith('.svg') ? "image/svg+xml" : "image/png",
+            purpose: "maskable"
+          }
+        ]
+      };
+
+      const manifestBlob = new Blob([JSON.stringify(dynamicManifest)], { type: 'application/manifest+json' });
+      const manifestUrl = URL.createObjectURL(manifestBlob);
+
+      let manifestLink = document.querySelector("link[rel='manifest']") as HTMLLinkElement;
+      if (manifestLink) {
+        manifestLink.href = manifestUrl;
+      }
+    } catch (err) {
+      console.warn("Não foi possível atualizar o manifesto dinamicamente:", err);
+    }
+  }, [appIconUrl, logoUrl, homeTitle]);
   const [specialOfTheDay, setSpecialOfTheDay] = useState<any>(null);
   const [infoBannerData, setInfoBannerData] = useState<any>({
     title: '',
@@ -302,6 +361,8 @@ export default function App() {
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
         const fetchedLogo = data.logoUrl || '';
         setLogoUrl(fetchedLogo);
+        const fetchedAppIcon = data.appIconUrl || data.twaIconUrl || '';
+        setAppIconUrl(fetchedAppIcon);
         setLogoAspectRatio(data.logoAspectRatio || '16:9');
         setLogoScale(data.logoScale || 'lg');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
@@ -1491,9 +1552,9 @@ export default function App() {
             <div className="flex items-center gap-3">
               <div className="bg-mana-green/10 p-2 rounded-xl">
                 <img 
-                  src="/logo.png?v=5" 
+                  src={appIconUrl || logoUrl || "/logo.png?v=5"} 
                   alt="Maná Lanches Saudáveis" 
-                  className="w-10 h-10 object-contain bg-transparent" 
+                  className="w-10 h-10 object-contain rounded-xl bg-transparent" 
                   fetchPriority="high"
                   decoding="async"
                   onError={(e) => { e.currentTarget.src = '/favicon.svg'; }} 
