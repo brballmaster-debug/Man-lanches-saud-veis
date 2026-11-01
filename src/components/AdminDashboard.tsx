@@ -6,6 +6,33 @@ import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Powe
 import Logo from './Logo';
 import CouponManager from './CouponManager';
 import CareGuideQrModal from './CareGuideQrModal';
+import { renderCareGuideIcon } from './CareGuide';
+
+const GUIDE_ICONS = [
+  { value: 'flame', label: 'Chama / Fogo' },
+  { value: 'airfryer', label: 'Air Fryer' },
+  { value: 'oven', label: 'Forno Convencional' },
+  { value: 'microwave', label: 'Micro-ondas' },
+  { value: 'fridge', label: 'Geladeira / Descongelar' },
+  { value: 'freezer', label: 'Freezer / Congelador' },
+  { value: 'thermometer', label: 'Termômetro' },
+  { value: 'utensils', label: 'Talheres / Servir' },
+  { value: 'spoon', label: 'Colher / Alimentação' },
+  { value: 'baby', label: 'Bebê / Idade / Meses' },
+  { value: 'cake', label: 'Bolo / Aniversário / Idade' },
+  { value: 'clock', label: 'Relógio / Tempo' },
+  { value: 'calendar', label: 'Calendário / Validade' },
+  { value: 'lightbulb', label: 'Lâmpada / Dica' },
+  { value: 'heart', label: 'Coração / Feito c/ Amor' },
+  { value: 'leaf', label: 'Folha / Natural' },
+  { value: 'cookie', label: 'Biscoito / Snack' },
+  { value: 'alert', label: 'Alerta / Atenção' },
+  { value: 'check', label: 'Check / Concluído' },
+  { value: 'sparkles', label: 'Especial / Brilho' },
+  { value: 'tag', label: 'Etiqueta' },
+  { value: 'info', label: 'Informação' },
+  { value: 'none', label: 'Sem ícone' },
+];
 
 interface AdminDashboardProps {
   onClose: () => void;
@@ -342,7 +369,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
         const fetchedLogo = data.logoUrl || '';
-        setLogoUrl(fetchedLogo.includes('logo.svg') ? '/logo.png?v=5' : fetchedLogo);
+        setLogoUrl(fetchedLogo);
         setLogoAspectRatio(data.logoAspectRatio || '16:9');
         setLogoScale(data.logoScale || 'lg');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');
@@ -845,7 +872,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       oven: 'Pré-aquecer a 180 °C e assar por 10 a 12 minutos.',
       notes: '',
       flavors: '',
-      tip: ''
+      tip: '',
+      customSections: []
     };
     setCareGuideData(prev => ({
       ...prev,
@@ -856,6 +884,72 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
       [newId]: true
     }));
     showToast("Novo card adicionado ao Guia!");
+  };
+
+  const handleAddCustomSection = (cardId: string) => {
+    triggerHaptic('light');
+    const newSectionId = Date.now().toString();
+    setCareGuideData(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.id === cardId) {
+          const currentSections = item.customSections || [];
+          return {
+            ...item,
+            customSections: [
+              ...currentSections,
+              {
+                id: newSectionId,
+                title: '',
+                description: '',
+                icon: 'flame'
+              }
+            ]
+          };
+        }
+        return item;
+      })
+    }));
+    showToast("Nova seção adicionada ao lanche! Digite o título e a descrição.");
+  };
+
+  const handleUpdateCustomSection = (
+    cardId: string, 
+    sectionId: string, 
+    field: 'title' | 'description' | 'icon', 
+    value: string
+  ) => {
+    setCareGuideData(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.id === cardId) {
+          return {
+            ...item,
+            customSections: (item.customSections || []).map(sec => 
+              sec.id === sectionId ? { ...sec, [field]: value } : sec
+            )
+          };
+        }
+        return item;
+      })
+    }));
+  };
+
+  const handleRemoveCustomSection = (cardId: string, sectionId: string) => {
+    triggerHaptic('warning');
+    setCareGuideData(prev => ({
+      ...prev,
+      items: prev.items.map(item => {
+        if (item.id === cardId) {
+          return {
+            ...item,
+            customSections: (item.customSections || []).filter(sec => sec.id !== sectionId)
+          };
+        }
+        return item;
+      })
+    }));
+    showToast("Seção removida!");
   };
 
   const handleRemoveGuideCard = (id: string) => {
@@ -1018,6 +1112,36 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         );
         triggerHaptic('success');
         showToast("Produto adicionado com sucesso!");
+
+        // Garante que quando criar um novo produto ele também apareça no Guia de Preparo
+        if (newProduct.name?.trim()) {
+          const productAlreadyInGuide = careGuideData.items.some(
+            item => item.title.trim().toLowerCase() === newProduct.name.trim().toLowerCase() || item.id === newProduct.id
+          );
+          if (!productAlreadyInGuide) {
+            const newGuideItem: CareGuideItem = {
+              id: newProduct.id,
+              title: newProduct.name.toUpperCase(),
+              subtitle: newProduct.category || 'Produto congelado',
+              storageType: 'Freezer.',
+              storageIcon: 'freezer',
+              prepareTitle: newProduct.usage ? 'Modo de Preparo:' : 'Preparo (direto do congelador):',
+              prepareIcon: 'flame',
+              airFryer: newProduct.usage?.toLowerCase().includes('air fryer') ? newProduct.usage : '180 °C por 6 a 8 minutos.',
+              oven: 'Pré-aquecer a 180 °C e assar por 10 a 12 minutos.',
+              notes: newProduct.description || '',
+              customSections: []
+            };
+            const updatedCareGuide = {
+              ...careGuideData,
+              items: [...careGuideData.items, newGuideItem]
+            };
+            setCareGuideData(updatedCareGuide);
+            setDoc(doc(db, 'settings', 'care_guide'), updatedCareGuide, { merge: true }).catch(err => {
+              console.warn("Erro ao sincronizar novo produto no Guia de Preparo:", err);
+            });
+          }
+        }
       }
       setEditingProduct(null);
     } catch (error) {
@@ -4160,6 +4284,142 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                       placeholder="Ex: Dica: consuma ainda morno para uma experiência mais saborosa!"
                                       className="w-full px-3 py-2 rounded-lg border border-mana-gold/30 bg-white"
                                     />
+                                  </div>
+
+                                  {/* Bloco de Seções Personalizadas (+ Botão) */}
+                                  <div className="sm:col-span-2 lg:col-span-3 pt-4 border-t border-mana-gold/20">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3">
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <label className="font-bold text-mana-green text-sm flex items-center gap-1.5">
+                                            <span>Seções & Instruções Personalizadas</span>
+                                          </label>
+                                          {item.customSections && item.customSections.length > 0 && (
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-mana-green/10 text-mana-green border border-mana-green/20">
+                                              {item.customSections.length} {item.customSections.length === 1 ? 'seção' : 'seções'}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <p className="text-[11px] text-mana-text-light mt-0.5">
+                                          Adicione títulos com ícone independente e descrição abaixo (clique no + para adicionar quantas vezes precisar).
+                                        </p>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddCustomSection(item.id)}
+                                        className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-mana-green hover:bg-mana-green-dark text-white rounded-xl text-xs font-bold transition-all shadow-xs hover:shadow cursor-pointer active:scale-95 shrink-0 self-start sm:self-auto"
+                                        title="Adicionar nova seção neste card"
+                                      >
+                                        <Plus size={16} />
+                                        <span>Adicionar Seção</span>
+                                      </button>
+                                    </div>
+
+                                    {/* Lista de Seções Customizadas */}
+                                    {item.customSections && item.customSections.length > 0 ? (
+                                      <div className="space-y-3">
+                                        {item.customSections.map((sec, secIdx) => (
+                                          <div 
+                                            key={sec.id}
+                                            className="p-3.5 rounded-xl border border-mana-gold/30 bg-[#FAF7F0] space-y-3 relative transition-all hover:border-mana-green/40 shadow-2xs"
+                                          >
+                                            <div className="flex items-center justify-between gap-2 border-b border-mana-gold/20 pb-2">
+                                              <span className="text-xs font-bold text-[#23381B] flex items-center gap-1.5">
+                                                <span className="w-5 h-5 rounded-full bg-mana-green text-white text-[10px] flex items-center justify-center font-bold">
+                                                  {secIdx + 1}
+                                                </span>
+                                                Instrução Extra #{secIdx + 1}
+                                              </span>
+
+                                              <button
+                                                type="button"
+                                                onClick={() => handleRemoveCustomSection(item.id, sec.id)}
+                                                className="text-red-500 hover:text-red-700 hover:bg-red-50 p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                                                title="Excluir esta seção"
+                                              >
+                                                <Trash2 size={14} />
+                                                <span className="text-[11px]">Remover</span>
+                                              </button>
+                                            </div>
+
+                                            {/* Local do Título: Ícone Independente junto com o Nome */}
+                                            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                                              <div className="sm:col-span-5 lg:col-span-4">
+                                                <label className="block text-[11px] font-bold text-mana-text mb-1">
+                                                  Ícone Independente
+                                                </label>
+                                                <div className="flex items-center gap-2">
+                                                  <div className="w-9 h-9 rounded-lg bg-white border border-mana-gold/30 text-mana-green flex items-center justify-center shrink-0 shadow-xs">
+                                                    {renderCareGuideIcon(sec.icon || 'flame', "w-4 h-4")}
+                                                  </div>
+                                                  <select
+                                                    value={sec.icon || 'flame'}
+                                                    onChange={(e) => handleUpdateCustomSection(item.id, sec.id, 'icon', e.target.value)}
+                                                    className="w-full px-2.5 py-2 text-xs rounded-lg border border-mana-gold/30 bg-white font-medium focus:outline-none focus:ring-1 focus:ring-mana-green cursor-pointer"
+                                                  >
+                                                    {GUIDE_ICONS.map(ic => (
+                                                      <option key={ic.value} value={ic.value}>{ic.label}</option>
+                                                    ))}
+                                                  </select>
+                                                </div>
+                                              </div>
+
+                                              <div className="sm:col-span-7 lg:col-span-8">
+                                                <label className="block text-[11px] font-bold text-mana-text mb-1">
+                                                  Título / Nome da Seção
+                                                </label>
+                                                <input
+                                                  type="text"
+                                                  value={sec.title}
+                                                  onChange={(e) => handleUpdateCustomSection(item.id, sec.id, 'title', e.target.value)}
+                                                  placeholder="Ex: Modo de Aquecer na Frigideira, Dica de Conservação..."
+                                                  className="w-full px-3 py-2 text-xs rounded-lg border border-mana-gold/30 bg-white font-semibold focus:outline-none focus:ring-1 focus:ring-mana-green"
+                                                />
+                                              </div>
+                                            </div>
+
+                                            {/* Embaixo: Descrição */}
+                                            <div>
+                                              <label className="block text-[11px] font-bold text-mana-text mb-1">
+                                                Descrição
+                                              </label>
+                                              <textarea
+                                                rows={2}
+                                                value={sec.description}
+                                                onChange={(e) => handleUpdateCustomSection(item.id, sec.id, 'description', e.target.value)}
+                                                placeholder="Ex: Aqueça a frigideira em fogo baixo, coloque o lanche com tampa e deixe por 3 minutos até ficar crocante..."
+                                                className="w-full px-3 py-2 text-xs rounded-lg border border-mana-gold/30 bg-white resize-none focus:outline-none focus:ring-1 focus:ring-mana-green"
+                                              />
+                                            </div>
+                                          </div>
+                                        ))}
+
+                                        {/* Botão de + para adicionar mais uma seção */}
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAddCustomSection(item.id)}
+                                          className="w-full py-2 px-3 border border-dashed border-mana-green/50 hover:border-mana-green bg-mana-green/5 hover:bg-mana-green/10 text-mana-green rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer"
+                                        >
+                                          <Plus size={15} />
+                                          <span>Adicionar Mais uma Seção (+)</span>
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="p-4 rounded-xl border border-dashed border-mana-gold/40 bg-mana-bg/30 text-center">
+                                        <p className="text-xs text-mana-text-light mb-2">
+                                          Nenhuma seção personalizada adicionada neste card ainda.
+                                        </p>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleAddCustomSection(item.id)}
+                                          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-mana-green hover:bg-mana-green-dark text-white rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                                        >
+                                          <Plus size={15} />
+                                          <span>Adicionar Seção (+)</span>
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>

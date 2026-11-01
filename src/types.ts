@@ -111,6 +111,13 @@ export interface Promotion {
   minAmount: number;
 }
 
+export interface CareGuideCustomSection {
+  id: string;
+  title: string;
+  description: string;
+  icon?: string;
+}
+
 export interface CareGuideItem {
   id: string;
   title: string;
@@ -128,6 +135,7 @@ export interface CareGuideItem {
   flavors?: string;
   tip?: string;
   avoidMicrowaveNotice?: string;
+  customSections?: CareGuideCustomSection[];
 }
 
 export interface CareGuideData {

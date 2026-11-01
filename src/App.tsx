@@ -301,7 +301,7 @@ export default function App() {
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
         const fetchedLogo = data.logoUrl || '';
-        setLogoUrl(fetchedLogo.includes('logo.svg') ? '/logo.png?v=5' : fetchedLogo);
+        setLogoUrl(fetchedLogo);
         setLogoAspectRatio(data.logoAspectRatio || '16:9');
         setLogoScale(data.logoScale || 'lg');
         setCatalogTitle(data.catalogTitle || 'Nosso Catálogo');

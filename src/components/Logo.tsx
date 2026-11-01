@@ -53,9 +53,9 @@ export const Logo: React.FC<LogoProps> = ({
     setImgError(false);
   }, [customUrl]);
 
-  // Se customUrl for nulo, indefinido ou contiver 'logo.svg', o fallback padrão é estritamente '/logo.png?v=5'
-  const isCustomValid = !imgError && !!customUrl && !customUrl.toLowerCase().includes('logo.svg');
-  const logoSrc = isCustomValid ? customUrl! : '/logo.png?v=5';
+  // Se customUrl for definida pelo admin e não houve erro de carregamento, usa ela diretamente
+  const isCustomValid = !imgError && !!customUrl && customUrl.trim() !== '';
+  const logoSrc = isCustomValid ? customUrl!.trim() : '/logo.png?v=5';
   const isWidescreen = aspectRatio === '16:9';
 
   return (

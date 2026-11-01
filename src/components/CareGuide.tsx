@@ -10,11 +10,19 @@ import {
   Check, 
   Heart, 
   Instagram, 
-  BookOpen
+  BookOpen,
+  Clock,
+  Calendar,
+  Baby,
+  Cake,
+  Leaf,
+  Sparkles,
+  Tag,
+  Info
 } from 'lucide-react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
-import { CareGuideData, CareGuideItem, defaultCareGuideData } from '../types';
+import { CareGuideData, CareGuideItem, CareGuideCustomSection, defaultCareGuideData } from '../types';
 import { Logo } from './Logo';
 
 export interface CareGuideProps {
@@ -81,6 +89,20 @@ const CookieIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" })
   </svg>
 );
 
+const SpoonIcon: React.FC<{ className?: string }> = ({ className = "w-6 h-6" }) => (
+  <svg 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="1.8" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M12 2a4 4 0 0 0-4 4c0 2.2 1.8 3.8 3 4.2V21a1 1 0 0 0 2 0v-10.8c1.2-.4 3-2 3-4.2a4 4 0 0 0-4-4z" />
+  </svg>
+);
+
 const LeafOrnament: React.FC<{ className?: string; flipped?: boolean }> = ({ className = "w-8 h-8", flipped = false }) => (
   <svg 
     viewBox="0 0 40 40" 
@@ -92,6 +114,60 @@ const LeafOrnament: React.FC<{ className?: string; flipped?: boolean }> = ({ cla
     <path d="M6 24C6 24 12 12 24 6C24 6 18 18 6 24Z" opacity="0.6" />
   </svg>
 );
+
+export const renderCareGuideIcon = (iconName?: string, className: string = "w-5 h-5") => {
+  switch (iconName) {
+    case 'airfryer':
+      return <AirFryerIcon className={className} />;
+    case 'oven':
+      return <OvenIcon className={className} />;
+    case 'microwave':
+      return <MicrowaveIcon className={className} />;
+    case 'fridge':
+      return <FridgeIcon className={className} />;
+    case 'cookie':
+      return <CookieIcon className={className} />;
+    case 'spoon':
+      return <SpoonIcon className={className} />;
+    case 'freezer':
+    case 'snowflake':
+      return <Snowflake className={className} />;
+    case 'flame':
+      return <Flame className={className} />;
+    case 'thermometer':
+      return <Thermometer className={className} />;
+    case 'utensils':
+      return <Utensils className={className} />;
+    case 'clock':
+      return <Clock className={className} />;
+    case 'calendar':
+      return <Calendar className={className} />;
+    case 'baby':
+      return <Baby className={className} />;
+    case 'cake':
+      return <Cake className={className} />;
+    case 'lightbulb':
+      return <Lightbulb className={className} />;
+    case 'heart':
+      return <Heart className={className} />;
+    case 'leaf':
+      return <Leaf className={className} />;
+    case 'alert':
+      return <AlertCircle className={className} />;
+    case 'check':
+      return <Check className={className} />;
+    case 'sparkles':
+      return <Sparkles className={className} />;
+    case 'tag':
+      return <Tag className={className} />;
+    case 'info':
+      return <Info className={className} />;
+    case 'none':
+      return null;
+    default:
+      return <Utensils className={className} />;
+  }
+};
 
 export const CareGuide: React.FC<CareGuideProps> = ({ 
   onClose,
@@ -315,6 +391,34 @@ export const CareGuide: React.FC<CareGuideProps> = ({
                           </p>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {/* Seções e Instruções Personalizadas adicionadas dinamicamente */}
+                  {item.customSections && item.customSections.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-[#EAE3D4] space-y-2.5">
+                      {item.customSections.map((sec) => (
+                        <div 
+                          key={sec.id}
+                          className="flex items-start gap-2.5 p-3 rounded-xl bg-[#F7F9F4] border border-[#DFE7D8]"
+                        >
+                          {sec.icon && sec.icon !== 'none' && (
+                            <div className="w-7 h-7 rounded-full bg-[#EBF0E6] text-[#2F4D24] flex items-center justify-center shrink-0 mt-0.5 border border-[#CCD8C4]">
+                              {renderCareGuideIcon(sec.icon, "w-4 h-4")}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <span className="block text-xs sm:text-sm font-bold text-[#23381B] leading-tight">
+                              {sec.title}
+                            </span>
+                            {sec.description && (
+                              <p className="text-xs text-[#44503C] leading-snug whitespace-pre-line mt-1">
+                                {sec.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   )}
                 </div>
