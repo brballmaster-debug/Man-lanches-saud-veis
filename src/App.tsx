@@ -4,18 +4,21 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
-import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard, BookOpen, Search, Sparkles, Tag, Copy, Check } from 'lucide-react';
+import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard, BookOpen, Search, Sparkles, Tag, Copy, Check, Bell, Volume2 } from 'lucide-react';
 import { products as defaultProducts } from './data';
-import { Product, CartItem, InfoSection, Promotion, Coupon, defaultCoupons } from './types';
+import { Product, CartItem, InfoSection, Promotion, Coupon, defaultCoupons, Order } from './types';
 import { auth, db, signInWithGoogle, logOut, signInAnonymously, isMasterAdminEmail, syncUserProfile } from './firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { doc, onSnapshot, runTransaction, collection, serverTimestamp, getDoc, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { doc, onSnapshot, runTransaction, collection, serverTimestamp, getDoc, setDoc, updateDoc, increment, query, orderBy, limit } from 'firebase/firestore';
 import Logo from './components/Logo';
 import { ProductSkeleton, BannerSkeleton } from './components/ProductSkeleton';
 import { triggerHaptic } from './utils/haptic';
 import FreeShippingBar from './components/FreeShippingBar';
 import CouponSection from './components/CouponSection';
 import BottomNav, { BottomNavTab } from './components/BottomNav';
+import { notifyNewOrder } from './utils/adminNotification';
+import { AdminNewOrderBanner } from './components/AdminNewOrderBanner';
+import { AdminNotificationSettingsModal } from './components/AdminNotificationSettingsModal';
 
 // Modais e painéis pesados carregados sob demanda (Code Splitting / Lazy Loading)
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
@@ -76,6 +79,11 @@ export default function App() {
   const [showOrderHistory, setShowOrderHistory] = useState(false);
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [incomingNewOrder, setIncomingNewOrder] = useState<Order | null>(null);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [pendingOrdersAdminCount, setPendingOrdersAdminCount] = useState(0);
+  const knownOrderIdsRef = useRef<Set<string>>(new Set());
+  const isOrdersInitialLoadRef = useRef(true);
   const [showCareGuide, setShowCareGuide] = useState(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -289,6 +297,64 @@ export default function App() {
       console.warn("Não foi possível atualizar o manifesto dinamicamente:", err);
     }
   }, [appIconUrl, logoUrl, homeTitle]);
+
+  // Monitoramento em tempo real de novos pedidos para o administrador autenticado
+  useEffect(() => {
+    if (!isAdmin) {
+      isOrdersInitialLoadRef.current = true;
+      knownOrderIdsRef.current.clear();
+      setPendingOrdersAdminCount(0);
+      return;
+    }
+
+    const qOrders = query(
+      collection(db, 'orders'),
+      orderBy('createdAt', 'desc'),
+      limit(25)
+    );
+
+    const unsubOrders = onSnapshot(qOrders, (snapshot) => {
+      const fetchedOrders = snapshot.docs.map(d => ({
+        id: d.id,
+        ...d.data()
+      })) as Order[];
+
+      const pendingCount = fetchedOrders.filter(
+        o => o.status === 'pending' || (o.status as string) === 'Pendente'
+      ).length;
+      setPendingOrdersAdminCount(pendingCount);
+
+      if (isOrdersInitialLoadRef.current) {
+        // No primeiro carregamento, apenas registra os IDs já existentes para não emitir alerta de pedidos antigos
+        fetchedOrders.forEach(o => knownOrderIdsRef.current.add(o.id));
+        isOrdersInitialLoadRef.current = false;
+        return;
+      }
+
+      // Procura por novos pedidos inseridos
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const order = { id: change.doc.id, ...change.doc.data() } as Order;
+          if (!knownOrderIdsRef.current.has(order.id)) {
+            knownOrderIdsRef.current.add(order.id);
+            // Dispara notificação com som cristalino, vibração e push nativo
+            notifyNewOrder(order, {
+              appIconUrl,
+              onClick: () => {
+                setShowAdminDashboard(true);
+              }
+            });
+            setIncomingNewOrder(order);
+          }
+        }
+      });
+    }, (error) => {
+      console.warn("Firestore [admin/orders-notification] listener:", error.message);
+    });
+
+    return () => unsubOrders();
+  }, [isAdmin, appIconUrl]);
+
   const [specialOfTheDay, setSpecialOfTheDay] = useState<any>(null);
   const [infoBannerData, setInfoBannerData] = useState<any>({
     title: '',
@@ -1105,13 +1171,32 @@ export default function App() {
                   Olá, {user.displayName?.split(' ')[0]}
                 </span>
                 {isAdmin && (
-                  <button 
-                    onClick={() => setShowAdminDashboard(true)}
-                    className="text-mana-text-light hover:text-mana-green transition-colors"
-                    title="Painel Admin"
-                  >
-                    <Settings size={20} />
-                  </button>
+                  <div className="flex items-center gap-1.5 sm:gap-2">
+                    <button 
+                      onClick={() => setShowNotificationModal(true)}
+                      className="relative p-1 text-mana-text-light hover:text-mana-green transition-colors"
+                      title="Notificações de Novos Pedidos"
+                      aria-label="Configurar notificações de novos pedidos"
+                    >
+                      <Bell size={20} className={pendingOrdersAdminCount > 0 ? "text-amber-600 animate-wiggle" : ""} />
+                      {pendingOrdersAdminCount > 0 && (
+                        <span 
+                          className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center animate-pulse shadow-xs"
+                          title={`${pendingOrdersAdminCount} pedido(s) pendente(s)`}
+                        >
+                          {pendingOrdersAdminCount > 9 ? '9+' : pendingOrdersAdminCount}
+                        </span>
+                      )}
+                    </button>
+                    <button 
+                      onClick={() => setShowAdminDashboard(true)}
+                      className="text-mana-text-light hover:text-mana-green transition-colors p-1"
+                      title="Painel Admin"
+                      aria-label="Abrir Painel Admin"
+                    >
+                      <Settings size={20} />
+                    </button>
+                  </div>
                 )}
                 <button 
                   onClick={() => setShowOrderHistory(true)}
@@ -2490,6 +2575,26 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Banner de Notificação de Novo Pedido em Tempo Real para Admin */}
+      {isAdmin && incomingNewOrder && (
+        <AdminNewOrderBanner
+          order={incomingNewOrder}
+          onOpenOrder={(_order) => {
+            setIncomingNewOrder(null);
+            setShowAdminDashboard(true);
+          }}
+          onDismiss={() => setIncomingNewOrder(null)}
+        />
+      )}
+
+      {/* Modal de Configuração de Notificações do Admin */}
+      <AdminNotificationSettingsModal
+        isOpen={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
+        appIconUrl={appIconUrl}
+        onShowToast={showToast}
+      />
     </div>
   );
 }

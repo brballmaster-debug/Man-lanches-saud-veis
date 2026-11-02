@@ -2,11 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db, isMasterAdminEmail } from '../firebase';
 import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData, Coupon, defaultCoupons } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, EyeOff, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard, Sparkles } from 'lucide-react';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, EyeOff, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard, Sparkles, Bell, Volume2, VolumeX, Play } from 'lucide-react';
 import Logo from './Logo';
 import CouponManager from './CouponManager';
 import CareGuideQrModal from './CareGuideQrModal';
 import { renderCareGuideIcon } from './CareGuide';
+import { 
+  getAdminNotificationSettings, 
+  saveAdminNotificationSettings, 
+  getBrowserNotificationPermission, 
+  requestBrowserNotificationPermission, 
+  testAdminNotification,
+  playOrderChime
+} from '../utils/adminNotification';
+import { AdminNotificationSettingsModal } from './AdminNotificationSettingsModal';
 
 const GUIDE_ICONS = [
   { value: 'flame', label: 'Chama / Fogo' },
@@ -192,6 +201,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   
   const [orders, setOrders] = useState<Order[]>([]);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [notifSettings, setNotifSettings] = useState(getAdminNotificationSettings);
+  const [browserPermission, setBrowserPermission] = useState(getBrowserNotificationPermission);
   const [users, setUsers] = useState<UserDocument[]>([]);
   const [isStoreOpen, setIsStoreOpen] = useState(true);
   const [lateSlotsBlocked, setLateSlotsBlocked] = useState(false);
@@ -1425,13 +1437,36 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
               <p className="text-xs text-mana-text-light hidden sm:block">Maná Lanches Saudáveis</p>
             </div>
           </div>
-          <button 
-            onClick={onClose}
-            aria-label="Fechar painel administrativo"
-            className="h-11 w-11 flex items-center justify-center p-2.5 text-mana-text-light hover:text-mana-text hover:bg-mana-bg active:bg-mana-gold/20 rounded-full transition-all duration-200 shrink-0"
-          >
-            <X size={24} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              type="button"
+              onClick={() => {
+                setShowNotificationModal(true);
+                setNotifSettings(getAdminNotificationSettings());
+                setBrowserPermission(getBrowserNotificationPermission());
+              }}
+              className="px-3 py-1.5 rounded-xl border border-mana-gold/30 hover:bg-mana-bg text-mana-green font-semibold text-xs transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+              title="Configurar Notificações e Alertas Sonoros de Novos Pedidos"
+            >
+              <Bell size={16} className={pendingOrdersCount > 0 ? "text-amber-600 animate-wiggle" : "text-mana-green"} />
+              <span className="hidden sm:inline">Notificações</span>
+              {notifSettings.soundEnabled && (
+                <Volume2 size={13} className="text-emerald-600 hidden sm:inline" />
+              )}
+              {pendingOrdersCount > 0 && (
+                <span className="bg-red-600 text-white text-[10px] font-bold rounded-full min-w-[17px] h-[17px] px-1 flex items-center justify-center animate-pulse">
+                  {pendingOrdersCount > 99 ? '99+' : pendingOrdersCount}
+                </span>
+              )}
+            </button>
+            <button 
+              onClick={onClose}
+              aria-label="Fechar painel administrativo"
+              className="h-10 w-10 flex items-center justify-center p-2 text-mana-text-light hover:text-mana-text hover:bg-mana-bg active:bg-mana-gold/20 rounded-full transition-all duration-200 shrink-0 cursor-pointer"
+            >
+              <X size={22} />
+            </button>
+          </div>
         </div>
 
         {/* Tabs Desktop */}
@@ -1589,6 +1624,101 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                     </div>
                   </div>
 
+                  {/* Central de Alertas e Notificações de Novos Pedidos */}
+                  <div className="bg-gradient-to-r from-emerald-50 via-white to-amber-50/50 rounded-2xl border border-emerald-200/80 p-5 shadow-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-emerald-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm shrink-0">
+                          <Bell size={22} className="animate-wiggle" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-serif text-lg font-bold text-emerald-950">
+                              Central de Alertas de Novos Pedidos
+                            </h3>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                              Tempo Real
+                            </span>
+                          </div>
+                          <p className="text-xs text-mana-text-light mt-0.5">
+                            Notificações sonoras e avisos nativos no celular e desktop para você nunca perder um pedido.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            testAdminNotification({
+                              appIconUrl,
+                              onToast: showToast
+                            });
+                          }}
+                          className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                          title="Tocar som de campainha de teste"
+                        >
+                          <Play size={13} className="fill-current text-amber-700" />
+                          <span>Testar Som de Campainha</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowNotificationModal(true)}
+                          className="px-3.5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Settings size={14} />
+                          <span>Configurar</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-3 text-xs">
+                      <div className="flex items-center justify-between bg-white/80 p-2.5 rounded-xl border border-emerald-100">
+                        <div className="flex items-center gap-2 text-gray-700 font-medium">
+                          <Volume2 size={16} className={notifSettings.soundEnabled ? "text-emerald-600" : "text-gray-400"} />
+                          <span>Campainha Sonora:</span>
+                        </div>
+                        <span className={`font-bold px-2 py-0.5 rounded text-[11px] ${notifSettings.soundEnabled ? "text-emerald-800 bg-emerald-100" : "text-gray-600 bg-gray-100"}`}>
+                          {notifSettings.soundEnabled ? "Ligada" : "Desligada"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-white/80 p-2.5 rounded-xl border border-emerald-100">
+                        <div className="flex items-center gap-2 text-gray-700 font-medium">
+                          <Smartphone size={16} className={notifSettings.vibrateEnabled ? "text-emerald-600" : "text-gray-400"} />
+                          <span>Vibração Tátil:</span>
+                        </div>
+                        <span className={`font-bold px-2 py-0.5 rounded text-[11px] ${notifSettings.vibrateEnabled ? "text-emerald-800 bg-emerald-100" : "text-gray-600 bg-gray-100"}`}>
+                          {notifSettings.vibrateEnabled ? "Ativa" : "Desativada"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between bg-white/80 p-2.5 rounded-xl border border-emerald-100">
+                        <div className="flex items-center gap-2 text-gray-700 font-medium">
+                          <Sparkles size={16} className={browserPermission === 'granted' ? "text-emerald-600" : "text-amber-500"} />
+                          <span>Avisos do Navegador:</span>
+                        </div>
+                        {browserPermission === 'granted' ? (
+                          <span className="font-bold px-2 py-0.5 rounded text-[11px] text-emerald-800 bg-emerald-100">
+                            Autorizado
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const res = await requestBrowserNotificationPermission();
+                              setBrowserPermission(res);
+                              if (res === 'granted') showToast("Notificações ativadas!");
+                            }}
+                            className="font-bold text-[11px] text-amber-800 hover:text-amber-900 underline cursor-pointer"
+                          >
+                            Permitir
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     {/* Top Products */}
                     <div className="bg-white p-6 rounded-2xl border border-mana-gold/20 shadow-sm">
@@ -1663,6 +1793,55 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
 
               {activeTab === 'orders' && (
                 <div className="space-y-6">
+                  {/* Status Bar de Monitoramento de Novos Pedidos */}
+                  <div className="bg-emerald-50 border border-emerald-200/90 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                        <Bell size={18} className={pendingOrdersCount > 0 ? "text-amber-300 animate-wiggle" : "text-white"} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-bold text-emerald-950">
+                            Monitoramento Ativo em Tempo Real
+                          </span>
+                          {pendingOrdersCount > 0 && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-600 text-white animate-pulse">
+                              {pendingOrdersCount} novo(s) pedido(s) aguardando
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-emerald-800 mt-0.5">
+                          Você receberá avisos sonoros e notificações do sistema imediatamente assim que um novo pedido for realizado.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          testAdminNotification({
+                            appIconUrl,
+                            onToast: showToast
+                          });
+                        }}
+                        className="px-3 py-1.5 rounded-lg bg-white hover:bg-emerald-100/50 border border-emerald-300 text-emerald-900 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        title="Testar campainha sonora"
+                      >
+                        <Volume2 size={14} className="text-emerald-700" />
+                        <span>Testar Som</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowNotificationModal(true)}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Settings size={13} />
+                        <span>Preferências</span>
+                      </button>
+                    </div>
+                  </div>
+
                   <div className="flex flex-col sm:flex-row gap-4">
                     <div className="relative flex-1">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-mana-text-light" size={20} />
@@ -5208,6 +5387,18 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
           onClose={() => setShowCareGuideQr(false)}
         />
       )}
+
+      {/* Modal de Configuração de Notificações do Admin */}
+      <AdminNotificationSettingsModal
+        isOpen={showNotificationModal}
+        onClose={() => {
+          setShowNotificationModal(false);
+          setNotifSettings(getAdminNotificationSettings());
+          setBrowserPermission(getBrowserNotificationPermission());
+        }}
+        appIconUrl={appIconUrl}
+        onShowToast={showToast}
+      />
     </div>
   );
 }
