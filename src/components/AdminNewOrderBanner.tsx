@@ -1,6 +1,6 @@
 import React from 'react';
 import { Order } from '../types';
-import { Bell, ArrowRight, X, Volume2, Clock, MapPin, ShoppingBag } from 'lucide-react';
+import { ConciergeBell, ArrowRight, X, Volume2, Clock, MapPin, ShoppingBag } from 'lucide-react';
 import { playOrderChime } from '../utils/adminNotification';
 
 interface AdminNewOrderBannerProps {
@@ -32,7 +32,7 @@ export const AdminNewOrderBanner: React.FC<AdminNewOrderBannerProps> = ({
       className="fixed top-3 left-3 right-3 sm:left-auto sm:right-4 sm:max-w-md z-[120] animate-in fade-in slide-in-from-top-6 duration-300"
     >
       <div className="bg-white rounded-2xl shadow-2xl border-2 border-emerald-500 overflow-hidden ring-4 ring-emerald-500/20">
-        {/* Barra superior de destaque */}
+        {/* Barra superior de destaque com Sino de Restaurante */}
         <div className="bg-gradient-to-r from-emerald-600 via-emerald-700 to-green-700 text-white px-4 py-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="relative flex h-3 w-3">
@@ -40,7 +40,7 @@ export const AdminNewOrderBanner: React.FC<AdminNewOrderBannerProps> = ({
               <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-400"></span>
             </span>
             <div className="flex items-center gap-1.5 font-bold text-sm tracking-wide">
-              <Bell size={16} className="text-amber-300 animate-bounce" />
+              <ConciergeBell size={17} className="text-amber-300 animate-bounce" />
               <span>NOVO PEDIDO RECEBIDO!</span>
             </div>
           </div>
@@ -48,14 +48,14 @@ export const AdminNewOrderBanner: React.FC<AdminNewOrderBannerProps> = ({
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => playOrderChime()}
-              className="p-1 rounded-lg hover:bg-white/15 text-emerald-100 hover:text-white transition-colors"
-              title="Tocar som novamente"
+              className="p-1.5 rounded-lg hover:bg-white/15 text-emerald-100 hover:text-white transition-colors cursor-pointer"
+              title="Tocar sino de restaurante novamente"
             >
               <Volume2 size={16} />
             </button>
             <button
               onClick={onDismiss}
-              className="p-1 rounded-lg hover:bg-white/15 text-emerald-100 hover:text-white transition-colors"
+              className="p-1.5 rounded-lg hover:bg-white/15 text-emerald-100 hover:text-white transition-colors cursor-pointer"
               title="Dispensar aviso"
             >
               <X size={16} />
@@ -110,14 +110,14 @@ export const AdminNewOrderBanner: React.FC<AdminNewOrderBannerProps> = ({
           <div className="pt-2 flex items-center gap-2">
             <button
               onClick={() => onOpenOrder(order)}
-              className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-700/20 active:scale-[0.98]"
+              className="flex-1 bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2.5 px-4 rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-700/20 active:scale-[0.98] cursor-pointer"
             >
               <span>Ver no Painel Admin</span>
               <ArrowRight size={15} />
             </button>
             <button
               onClick={onDismiss}
-              className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-100 text-xs font-semibold transition-colors"
+              className="px-3 py-2.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-100 text-xs font-semibold transition-colors cursor-pointer"
             >
               Fechar
             </button>

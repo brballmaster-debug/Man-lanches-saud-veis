@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
-import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard, BookOpen, Search, Sparkles, Tag, Copy, Check, Bell, Volume2 } from 'lucide-react';
+import { ShoppingBag, Clock, Leaf, Plus, Minus, X, Info, ChevronRight, MapPin, LogIn, LogOut, Package, Settings, CheckCircle, Trash2, Activity, Smartphone, Banknote, CreditCard, BookOpen, Search, Sparkles, Tag, Copy, Check, Bell, Volume2, ConciergeBell } from 'lucide-react';
 import { products as defaultProducts } from './data';
 import { Product, CartItem, InfoSection, Promotion, Coupon, defaultCoupons, Order } from './types';
 import { auth, db, signInWithGoogle, logOut, signInAnonymously, isMasterAdminEmail, syncUserProfile } from './firebase';
@@ -1174,11 +1174,11 @@ export default function App() {
                   <div className="flex items-center gap-1.5 sm:gap-2">
                     <button 
                       onClick={() => setShowNotificationModal(true)}
-                      className="relative p-1 text-mana-text-light hover:text-mana-green transition-colors"
-                      title="Notificações de Novos Pedidos"
+                      className="relative p-1 text-mana-text-light hover:text-mana-green transition-colors cursor-pointer"
+                      title="Sino de Restaurante (Notificações de Novos Pedidos)"
                       aria-label="Configurar notificações de novos pedidos"
                     >
-                      <Bell size={20} className={pendingOrdersAdminCount > 0 ? "text-amber-600 animate-wiggle" : ""} />
+                      <ConciergeBell size={20} className={pendingOrdersAdminCount > 0 ? "text-amber-600 animate-wiggle" : "text-mana-green"} />
                       {pendingOrdersAdminCount > 0 && (
                         <span 
                           className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold rounded-full min-w-[16px] h-[16px] px-1 flex items-center justify-center animate-pulse shadow-xs"

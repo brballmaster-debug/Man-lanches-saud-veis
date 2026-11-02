@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db, isMasterAdminEmail } from '../firebase';
 import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData, Coupon, defaultCoupons } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, EyeOff, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard, Sparkles, Bell, Volume2, VolumeX, Play } from 'lucide-react';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, EyeOff, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard, Sparkles, Bell, Volume2, VolumeX, Play, ConciergeBell } from 'lucide-react';
 import Logo from './Logo';
 import CouponManager from './CouponManager';
 import CareGuideQrModal from './CareGuideQrModal';
@@ -1446,10 +1446,10 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                 setBrowserPermission(getBrowserNotificationPermission());
               }}
               className="px-3 py-1.5 rounded-xl border border-mana-gold/30 hover:bg-mana-bg text-mana-green font-semibold text-xs transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-              title="Configurar Notificações e Alertas Sonoros de Novos Pedidos"
+              title="Configurar Sino de Restaurante e Notificações de Novos Pedidos"
             >
-              <Bell size={16} className={pendingOrdersCount > 0 ? "text-amber-600 animate-wiggle" : "text-mana-green"} />
-              <span className="hidden sm:inline">Notificações</span>
+              <ConciergeBell size={17} className={pendingOrdersCount > 0 ? "text-amber-600 animate-wiggle" : "text-mana-green"} />
+              <span className="hidden sm:inline">Sino de Pedidos</span>
               {notifSettings.soundEnabled && (
                 <Volume2 size={13} className="text-emerald-600 hidden sm:inline" />
               )}
@@ -1628,20 +1628,20 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                   <div className="bg-gradient-to-r from-emerald-50 via-white to-amber-50/50 rounded-2xl border border-emerald-200/80 p-5 shadow-xs">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-emerald-100">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-sm shrink-0">
-                          <Bell size={22} className="animate-wiggle" />
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-500 to-amber-700 text-white flex items-center justify-center shadow-md shadow-amber-600/20 shrink-0 ring-2 ring-amber-400/30">
+                          <ConciergeBell size={22} className="animate-wiggle" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
                             <h3 className="font-serif text-lg font-bold text-emerald-950">
-                              Central de Alertas de Novos Pedidos
+                              Sino de Restaurante (Novos Pedidos)
                             </h3>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
-                              Tempo Real
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300">
+                              Campainha de Balcão
                             </span>
                           </div>
                           <p className="text-xs text-mana-text-light mt-0.5">
-                            Notificações sonoras e avisos nativos no celular e desktop para você nunca perder um pedido.
+                            Campainha de cozinha estilo "Pedido Pronto!" com ressonância metálica e avisos em tempo real.
                           </p>
                         </div>
                       </div>
@@ -1652,14 +1652,15 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                           onClick={() => {
                             testAdminNotification({
                               appIconUrl,
+                              soundType: notifSettings.soundType,
                               onToast: showToast
                             });
                           }}
                           className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                          title="Tocar som de campainha de teste"
+                          title="Tocar sino de restaurante de teste"
                         >
-                          <Play size={13} className="fill-current text-amber-700" />
-                          <span>Testar Som de Campainha</span>
+                          <ConciergeBell size={14} className="text-amber-700" />
+                          <span>Testar Sino de Restaurante</span>
                         </button>
                         <button
                           type="button"
@@ -1796,13 +1797,13 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                   {/* Status Bar de Monitoramento de Novos Pedidos */}
                   <div className="bg-emerald-50 border border-emerald-200/90 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
                     <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
-                        <Bell size={18} className={pendingOrdersCount > 0 ? "text-amber-300 animate-wiggle" : "text-white"} />
+                      <div className="w-8 h-8 rounded-lg bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                        <ConciergeBell size={18} className={pendingOrdersCount > 0 ? "text-amber-200 animate-wiggle" : "text-white"} />
                       </div>
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs font-bold text-emerald-950">
-                            Monitoramento Ativo em Tempo Real
+                            Sino de Cozinha Ativo em Tempo Real
                           </span>
                           {pendingOrdersCount > 0 && (
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-600 text-white animate-pulse">
@@ -1811,7 +1812,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                           )}
                         </div>
                         <p className="text-[11px] text-emerald-800 mt-0.5">
-                          Você receberá avisos sonoros e notificações do sistema imediatamente assim que um novo pedido for realizado.
+                          O sino metálico de restaurante soará automaticamente assim que um novo pedido for realizado.
                         </p>
                       </div>
                     </div>
@@ -1822,14 +1823,15 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                         onClick={() => {
                           testAdminNotification({
                             appIconUrl,
+                            soundType: notifSettings.soundType,
                             onToast: showToast
                           });
                         }}
-                        className="px-3 py-1.5 rounded-lg bg-white hover:bg-emerald-100/50 border border-emerald-300 text-emerald-900 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                        title="Testar campainha sonora"
+                        className="px-3 py-1.5 rounded-lg bg-white hover:bg-amber-50 border border-amber-300 text-amber-900 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        title="Tocar sino de restaurante"
                       >
-                        <Volume2 size={14} className="text-emerald-700" />
-                        <span>Testar Som</span>
+                        <ConciergeBell size={14} className="text-amber-700" />
+                        <span>Testar Sino</span>
                       </button>
                       <button
                         type="button"
