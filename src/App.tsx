@@ -181,7 +181,9 @@ export default function App() {
         userDocUnsubscribe = onSnapshot(userDocRef, (userSnap) => {
           if (userSnap.exists()) {
             const userData = userSnap.data();
-            if (userData.name) setCustomerName(prev => prev || userData.name);
+            if (userData.name && userData.name.trim() !== '' && userData.name.trim().toLowerCase() !== 'cliente visitante') {
+              setCustomerName(prev => (prev && prev.trim().toLowerCase() !== 'cliente visitante' ? prev : userData.name));
+            }
             if (userData.address) setAddress(prev => ({ ...prev, ...userData.address }));
             
             const hasAdminRole = userData.role === 'admin' || isMaster;
@@ -580,7 +582,8 @@ export default function App() {
   
   // Checkout form state
   const [customerName, setCustomerName] = useState(() => {
-    return localStorage.getItem('mana_customerName') || '';
+    const saved = localStorage.getItem('mana_customerName') || '';
+    return saved.trim().toLowerCase() === 'cliente visitante' ? '' : saved;
   });
   const [address, setAddress] = useState(() => {
     const savedAddress = localStorage.getItem('mana_address');
@@ -645,7 +648,11 @@ export default function App() {
 
   // Save to localStorage whenever data changes
   useEffect(() => {
-    localStorage.setItem('mana_customerName', customerName);
+    if (!customerName || customerName.trim().toLowerCase() === 'cliente visitante') {
+      localStorage.removeItem('mana_customerName');
+    } else {
+      localStorage.setItem('mana_customerName', customerName);
+    }
   }, [customerName]);
 
   useEffect(() => {
@@ -806,9 +813,11 @@ export default function App() {
       return;
     }
 
-    if (!customerName || (deliveryType === 'delivery' && (!address.street || !address.number || !address.neighborhood)) || !paymentMethod || (deliverySlotsEnabled && !deliveryTime)) {
+    const isCustomerNameValid = Boolean(customerName && customerName.trim().length > 0 && customerName.trim().toLowerCase() !== 'cliente visitante');
+
+    if (!isCustomerNameValid || (deliveryType === 'delivery' && (!address.street || !address.number || !address.neighborhood)) || !paymentMethod || (deliverySlotsEnabled && !deliveryTime)) {
       const missingFields = [];
-      if (!customerName) missingFields.push('Nome');
+      if (!isCustomerNameValid) missingFields.push('Nome');
       if (deliveryType === 'delivery') {
         if (!address.street) missingFields.push('Rua');
         if (!address.number) missingFields.push('Número');

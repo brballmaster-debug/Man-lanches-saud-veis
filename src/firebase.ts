@@ -135,7 +135,7 @@ export const syncUserProfile = async (user: any, additionalData?: { name?: strin
     if (!userSnap.exists()) {
       const initialData: any = {
         uid: user.uid,
-        name: additionalData?.name || user.displayName || (user.isAnonymous ? 'Cliente Visitante' : ''),
+        name: additionalData?.name || user.displayName || '',
         email: user.email || '',
         role: isMaster ? 'admin' : 'client',
         isAnonymous: Boolean(user.isAnonymous),
