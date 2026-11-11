@@ -11,6 +11,7 @@ service cloud.firestore {
     // Fields:
     //   - uid: string (required)
     //   - name: string (optional)
+    //   - phone: string (optional)
     //   - email: string (required, can be empty for anonymous)
     //   - role: string (required, 'admin' or 'client')
     //   - address: map (optional)
@@ -23,6 +24,7 @@ service cloud.firestore {
     // Fields:
     //   - userId: string (required)
     //   - customerName: string (required)
+    //   - customerPhone: string (required)
     //   - items: list (required)
     //   - subtotal: number (optional)
     //   - discountAmount: number (optional)
@@ -60,12 +62,13 @@ service cloud.firestore {
     }
 
     function isValidUser(data) {
-      let allowedFields = ['uid', 'name', 'email', 'role', 'address', 'createdAt', 'lastLoginAt', 'source', 'isAnonymous'];
+      let allowedFields = ['uid', 'name', 'phone', 'email', 'role', 'address', 'createdAt', 'lastLoginAt', 'source', 'isAnonymous'];
       
       return data.keys().hasOnly(allowedFields) &&
              data.uid == request.auth.uid &&
              (!('email' in data) || data.email is string) &&
              (!('name' in data) || (data.name is string && data.name.size() <= 100)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
              (!('role' in data) || data.role in ['admin', 'client']) &&
              (!('address' in data) || data.address is map) &&
              (!('createdAt' in data) || data.createdAt is timestamp) &&
@@ -75,11 +78,14 @@ service cloud.firestore {
     }
 
     function isValidOrder(data) {
-      let requiredFields = ['userId', 'customerName', 'items', 'total', 'address', 'deliveryType', 'paymentMethod', 'deliveryDate', 'deliveryTime', 'status', 'createdAt'];
+      let requiredFields = ['userId', 'customerName', 'customerPhone', 'items', 'total', 'address', 'deliveryType', 'paymentMethod', 'deliveryDate', 'deliveryTime', 'status', 'createdAt'];
       
       return data.keys().hasAll(requiredFields) &&
              data.userId == request.auth.uid &&
              data.customerName is string &&
+             data.customerPhone is string &&
+             data.customerPhone.size() >= 5 &&
+             data.customerPhone.size() <= 30 &&
              data.items is list &&
              data.total is number &&
              data.address is map &&

@@ -7,6 +7,7 @@
       "properties": {
         "uid": { "type": "string" },
         "name": { "type": "string" },
+        "phone": { "type": "string" },
         "email": { "type": "string", "format": "email" },
         "role": { "type": "string", "enum": ["admin", "client"] },
         "address": {
@@ -32,6 +33,7 @@
       "properties": {
         "userId": { "type": "string" },
         "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
         "items": {
           "type": "array",
           "items": {
@@ -61,7 +63,7 @@
         "status": { "type": "string", "enum": ["pending", "confirmed", "delivered", "cancelled"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["userId", "customerName", "items", "total", "address", "deliveryDate", "deliveryTime", "status", "createdAt"]
+      "required": ["userId", "customerName", "customerPhone", "items", "total", "address", "deliveryDate", "deliveryTime", "status", "createdAt"]
     },
     "DeliverySlot": {
       "title": "DeliverySlot",

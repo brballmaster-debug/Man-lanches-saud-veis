@@ -1254,6 +1254,9 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
 
     let text = `PEDIDO #${order.id.slice(-6).toUpperCase()}\n`;
     text += `Cliente: ${order.customerName}\n`;
+    if (order.customerPhone) {
+      text += `Telefone: ${order.customerPhone}\n`;
+    }
     text += `Data: ${order.deliveryDate} às ${order.deliveryTime}\n`;
     text += `Modalidade: ${isPickup ? 'Retirada no balcão' : 'Entrega'}\n`;
     if (order.paymentMethod) {
@@ -1277,6 +1280,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
 
   const filteredOrders = orders.filter(o => {
     const matchesSearch = o.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (o.customerPhone && o.customerPhone.toLowerCase().includes(searchTerm.toLowerCase())) ||
       o.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
     return matchesSearch && matchesStatus;
@@ -1758,7 +1762,10 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                           <div key={order.id} className="flex items-center justify-between p-3 border-b border-mana-gold/10 last:border-0">
                             <div>
                               <p className="font-medium text-mana-text text-sm">{order.customerName}</p>
-                              <p className="text-[10px] text-mana-text-light">#{order.id.slice(-6).toUpperCase()} • {order.deliveryTime}</p>
+                              <p className="text-[10px] text-mana-text-light">
+                                #{order.id.slice(-6).toUpperCase()} • {order.deliveryTime}
+                                {order.customerPhone ? ` • ${order.customerPhone}` : ''}
+                              </p>
                             </div>
                             <div className="text-right">
                               <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
@@ -1941,8 +1948,13 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                                       </button>
                                     </div>
                                   </div>
-                                  <p className="text-sm text-mana-text-light mb-1">
-                                    Data: {order.deliveryDate}
+                                  <p className="text-sm text-mana-text-light mb-1 flex items-center gap-2 flex-wrap">
+                                    <span>Data: {order.deliveryDate}</span>
+                                    {order.customerPhone && (
+                                      <span className="text-mana-text font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5 rounded text-xs">
+                                        Tel: {order.customerPhone}
+                                      </span>
+                                    )}
                                   </p>
                                   <p className="text-xs text-mana-text-light mb-4">
                                     {isPickupOrder ? (

@@ -184,6 +184,7 @@ export default function App() {
             if (userData.name && userData.name.trim() !== '' && userData.name.trim().toLowerCase() !== 'cliente visitante') {
               setCustomerName(prev => (prev && prev.trim().toLowerCase() !== 'cliente visitante' ? prev : userData.name));
             }
+            if (userData.phone) setCustomerPhone(prev => prev || userData.phone);
             if (userData.address) setAddress(prev => ({ ...prev, ...userData.address }));
             
             const hasAdminRole = userData.role === 'admin' || isMaster;
@@ -585,6 +586,9 @@ export default function App() {
     const saved = localStorage.getItem('mana_customerName') || '';
     return saved.trim().toLowerCase() === 'cliente visitante' ? '' : saved;
   });
+  const [customerPhone, setCustomerPhone] = useState(() => {
+    return localStorage.getItem('mana_customerPhone') || '';
+  });
   const [address, setAddress] = useState(() => {
     const savedAddress = localStorage.getItem('mana_address');
     return savedAddress ? JSON.parse(savedAddress) : {
@@ -654,6 +658,14 @@ export default function App() {
       localStorage.setItem('mana_customerName', customerName);
     }
   }, [customerName]);
+
+  useEffect(() => {
+    if (!customerPhone) {
+      localStorage.removeItem('mana_customerPhone');
+    } else {
+      localStorage.setItem('mana_customerPhone', customerPhone);
+    }
+  }, [customerPhone]);
 
   useEffect(() => {
     localStorage.setItem('mana_address', JSON.stringify(address));
@@ -814,10 +826,12 @@ export default function App() {
     }
 
     const isCustomerNameValid = Boolean(customerName && customerName.trim().length > 0 && customerName.trim().toLowerCase() !== 'cliente visitante');
+    const isCustomerPhoneValid = Boolean(customerPhone && customerPhone.trim().replace(/\D/g, '').length >= 8);
 
-    if (!isCustomerNameValid || (deliveryType === 'delivery' && (!address.street || !address.number || !address.neighborhood)) || !paymentMethod || (deliverySlotsEnabled && !deliveryTime)) {
+    if (!isCustomerNameValid || !isCustomerPhoneValid || (deliveryType === 'delivery' && (!address.street || !address.number || !address.neighborhood)) || !paymentMethod || (deliverySlotsEnabled && !deliveryTime)) {
       const missingFields = [];
       if (!isCustomerNameValid) missingFields.push('Nome');
+      if (!isCustomerPhoneValid) missingFields.push('Telefone para Contato');
       if (deliveryType === 'delivery') {
         if (!address.street) missingFields.push('Rua');
         if (!address.number) missingFields.push('Número');
@@ -897,6 +911,7 @@ export default function App() {
         const userRef = doc(db, 'users', user.uid);
         transaction.set(userRef, { 
           name: customerName,
+          phone: customerPhone,
           address: address // Save address for future use
         }, { merge: true });
 
@@ -910,6 +925,7 @@ export default function App() {
         transaction.set(newOrderRef, {
           userId: user.uid,
           customerName,
+          customerPhone,
           items: cart.map(item => ({
             productId: item.product.id,
             name: item.product.name,
@@ -940,7 +956,7 @@ export default function App() {
         ? (pixPaymentType === 'antecipado' ? 'Pix (Antecipado)' : 'Pix (Na Entrega)')
         : (paymentMethod === 'dinheiro' ? 'Dinheiro' : 'Cartão (na entrega)');
 
-      let message = `Olá! Meu nome é *${customerName}* e gostaria de fazer o seguinte pedido:\n\n`;
+      let message = `Olá! Meu nome é *${customerName}* (Tel: *${customerPhone}*) e gostaria de fazer o seguinte pedido:\n\n`;
       cart.forEach(item => {
         message += `${item.quantity}x ${item.product.name} - R$ ${(item.product.price * item.quantity).toFixed(2)}\n`;
       });
@@ -1994,6 +2010,17 @@ export default function App() {
                         />
                       </div>
 
+                      <div>
+                        <label className="block text-xs font-medium text-mana-text-light mb-1">Telefone para Contato *</label>
+                        <input 
+                          type="tel" 
+                          value={customerPhone}
+                          onChange={e => setCustomerPhone(e.target.value)}
+                          className="w-full bg-white border border-mana-gold/30 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-mana-green focus:ring-1 focus:ring-mana-green"
+                          placeholder="(DDD) 99999-9999"
+                        />
+                      </div>
+
                       {deliveryPickUpEnabled && (
                         <div className="grid grid-cols-2 gap-2 mt-4">
                           <button
@@ -2309,8 +2336,13 @@ export default function App() {
                       <div className="flex items-start gap-3">
                         <MapPin size={16} className="text-mana-gold shrink-0 mt-1" />
                         <div>
-                          <p className="text-xs font-bold text-mana-green uppercase tracking-wider mb-1">Entregar para:</p>
+                          <p className="text-xs font-bold text-mana-green uppercase tracking-wider mb-1">
+                            {deliveryType === 'delivery' ? 'Entregar para:' : 'Retirada por:'}
+                          </p>
                           <p className="text-sm text-mana-text font-medium">{customerName}</p>
+                          {customerPhone && (
+                            <p className="text-xs text-mana-text-light mt-0.5">Contato: {customerPhone}</p>
+                          )}
                           {deliveryType === 'delivery' ? (
                             <p className="text-xs text-mana-text-light mt-1">
                               {address.street}, {address.number} - {address.neighborhood}
