@@ -173,7 +173,7 @@ export default function App() {
 
         // Sincroniza metadados com segurança sem nunca rebaixar cargos existentes (role)
         syncUserProfile(currentUser).catch((err) => {
-          console.error("Erro ao sincronizar perfil do usuário:", err);
+          console.warn("Aviso ao sincronizar perfil do usuário:", err?.message || err);
         });
 
         // Escuta o documento do usuário em tempo real no Firestore
@@ -357,6 +357,20 @@ export default function App() {
 
     return () => unsubOrders();
   }, [isAdmin, appIconUrl]);
+
+  // Listener para cliques em notificações nativas disparadas pelo Service Worker
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'NOTIFICATION_CLICKED') {
+        setShowAdminDashboard(true);
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', handleSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    };
+  }, []);
 
   const [specialOfTheDay, setSpecialOfTheDay] = useState<any>(null);
   const [infoBannerData, setInfoBannerData] = useState<any>({

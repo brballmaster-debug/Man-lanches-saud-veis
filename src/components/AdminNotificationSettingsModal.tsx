@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   ConciergeBell, 
@@ -9,7 +9,11 @@ import {
   AlertCircle, 
   Sparkles, 
   Play,
-  Check
+  Check,
+  BellRing,
+  Clock,
+  ShieldCheck,
+  Info
 } from 'lucide-react';
 import { 
   getAdminNotificationSettings, 
@@ -17,6 +21,8 @@ import {
   getBrowserNotificationPermission, 
   requestBrowserNotificationPermission, 
   testAdminNotification,
+  testDelayedBackgroundNotification,
+  getServiceWorkerStatus,
   playRestaurantServiceBell,
   AdminNotificationSettings,
   BellSoundType
@@ -37,11 +43,21 @@ export const AdminNotificationSettingsModal: React.FC<AdminNotificationSettingsM
 }) => {
   const [settings, setSettings] = useState<AdminNotificationSettings>(getAdminNotificationSettings);
   const [browserPermission, setBrowserPermission] = useState<NotificationPermission | 'unsupported'>('default');
+  const [swStatus, setSwStatus] = useState<'active' | 'installing' | 'unsupported'>('installing');
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const cancelDelayedRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setSettings(getAdminNotificationSettings());
       setBrowserPermission(getBrowserNotificationPermission());
+      getServiceWorkerStatus().then(setSwStatus);
+    } else {
+      if (cancelDelayedRef.current) {
+        cancelDelayedRef.current();
+        cancelDelayedRef.current = null;
+      }
+      setCountdown(null);
     }
   }, [isOpen]);
 
@@ -65,8 +81,9 @@ export const AdminNotificationSettingsModal: React.FC<AdminNotificationSettingsM
   const handleRequestBrowserPermission = async () => {
     const res = await requestBrowserNotificationPermission();
     setBrowserPermission(res);
+    getServiceWorkerStatus().then(setSwStatus);
     if (res === 'granted') {
-      onShowToast("Notificações do navegador ativadas com sucesso!");
+      onShowToast("Notificações nativas ativadas com sucesso!");
     } else if (res === 'denied') {
       onShowToast("Permissão negada no navegador. Habilite nas configurações do site.");
     }
@@ -76,6 +93,25 @@ export const AdminNotificationSettingsModal: React.FC<AdminNotificationSettingsM
     testAdminNotification({
       appIconUrl,
       soundType: settings.soundType,
+      onToast: onShowToast
+    });
+  };
+
+  const handleStartBackgroundTest = () => {
+    if (cancelDelayedRef.current) {
+      cancelDelayedRef.current();
+    }
+    setCountdown(4);
+    cancelDelayedRef.current = testDelayedBackgroundNotification(4, {
+      appIconUrl,
+      soundType: settings.soundType,
+      onTick: (rem) => {
+        if (rem <= 0) {
+          setCountdown(null);
+        } else {
+          setCountdown(rem);
+        }
+      },
       onToast: onShowToast
     });
   };
@@ -274,40 +310,45 @@ export const AdminNotificationSettingsModal: React.FC<AdminNotificationSettingsM
             </div>
           </div>
 
-          {/* Card de Permissão do Navegador */}
-          <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 space-y-2.5">
+          {/* Card de Notificações Nativas & Web Push (Celular e PC) */}
+          <div className="bg-gradient-to-br from-emerald-50/80 via-white to-emerald-50/40 border border-emerald-200/80 rounded-xl p-4 space-y-3 shadow-xs">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
-                <Sparkles size={14} className="text-emerald-600" />
-                Notificações no Celular & Computador
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-950 flex items-center gap-1.5">
+                <BellRing size={15} className="text-emerald-700" />
+                Web Push & Notificação Nativa
               </span>
-              <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                browserPermission === 'granted'
-                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                  : browserPermission === 'denied'
-                  ? 'bg-red-100 text-red-800 border border-red-300'
-                  : 'bg-amber-100 text-amber-800 border border-amber-300'
-              }`}>
-                {browserPermission === 'granted'
-                  ? 'Permissão Ativa'
-                  : browserPermission === 'denied'
-                  ? 'Permissão Bloqueada'
-                  : 'Pendente'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                  browserPermission === 'granted'
+                    ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                    : browserPermission === 'denied'
+                    ? 'bg-red-100 text-red-800 border border-red-300'
+                    : 'bg-amber-100 text-amber-800 border border-amber-300'
+                }`}>
+                  {browserPermission === 'granted'
+                    ? 'Permissão Ativa'
+                    : browserPermission === 'denied'
+                    ? 'Permissão Bloqueada'
+                    : 'Pendente'}
+                </span>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200" title="Status do Service Worker">
+                  {swStatus === 'active' ? '✓ SW Ativo' : 'SW Carregando'}
+                </span>
+              </div>
             </div>
 
-            <p className="text-xs text-emerald-950 leading-relaxed">
-              Receba avisos na tela inicial ou na barra de notificações do seu celular Android (TWA / PWA) mesmo com a aba em segundo plano.
+            <p className="text-xs text-emerald-950/90 leading-relaxed">
+              Receba notificações nativas com som e vibração na barra de status do seu celular Android (PWA) e no computador mesmo com a tela bloqueada ou aba em segundo plano.
             </p>
 
             {browserPermission !== 'granted' && (
               <button
                 type="button"
                 onClick={handleRequestBrowserPermission}
-                className="w-full mt-1 bg-mana-green hover:bg-mana-green-dark text-white font-bold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
+                className="w-full mt-1 bg-mana-green hover:bg-mana-green-dark text-white font-bold py-2.5 px-3 rounded-lg text-xs flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
               >
                 <ConciergeBell size={15} />
-                <span>Ativar Notificações no Meu Navegador</span>
+                <span>Ativar Notificações no Celular / Computador</span>
               </button>
             )}
 
@@ -315,10 +356,62 @@ export const AdminNotificationSettingsModal: React.FC<AdminNotificationSettingsM
               <div className="bg-amber-50 p-2.5 rounded-lg border border-amber-200 text-[11px] text-amber-900 flex items-start gap-2">
                 <AlertCircle size={15} className="text-amber-600 mt-0.5 shrink-0" />
                 <span>
-                  O navegador bloqueou as notificações deste site. Clique no ícone de cadeado na barra de endereço para permitir notificações.
+                  O navegador bloqueou as notificações deste site. Clique no ícone de cadeado/ajustes ao lado do link para permitir notificações.
                 </span>
               </div>
             )}
+
+            {/* Testes de Notificação */}
+            <div className="pt-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={handleTestNotification}
+                className="bg-white border border-emerald-300 hover:bg-emerald-50 text-emerald-900 font-bold py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer"
+              >
+                <Play size={13} className="text-emerald-700" />
+                <span>Teste Imediato</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleStartBackgroundTest}
+                disabled={countdown !== null}
+                className={`py-2 px-3 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-2xs cursor-pointer ${
+                  countdown !== null
+                    ? 'bg-amber-500 text-white animate-pulse'
+                    : 'bg-emerald-700 hover:bg-emerald-800 text-white'
+                }`}
+                title="Dá 4 segundos para você minimizar o app ou bloquear o celular antes do alerta disparar"
+              >
+                <Clock size={13} />
+                <span>
+                  {countdown !== null
+                    ? `Bloqueie a tela (${countdown}s)...`
+                    : 'Testar em 2º Plano (4s)'}
+                </span>
+              </button>
+            </div>
+
+            {countdown !== null && (
+              <div className="bg-amber-50 border border-amber-300 p-2.5 rounded-lg text-[11px] text-amber-950 flex items-center gap-2 animate-in fade-in">
+                <Clock size={16} className="text-amber-700 shrink-0 animate-spin" />
+                <span>
+                  <strong>Atenção:</strong> Bloqueie a tela do celular ou minimize a aba agora! A notificação chegará em <strong>{countdown} segundos</strong>.
+                </span>
+              </div>
+            )}
+
+            {/* Dicas para Celular e PC */}
+            <div className="bg-white/80 p-2.5 rounded-lg border border-emerald-100 text-[11px] text-gray-600 space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-gray-800">
+                <Info size={13} className="text-emerald-600" />
+                <span>Dicas para garantir o recebimento:</span>
+              </div>
+              <ul className="list-disc list-inside space-y-0.5 text-[10.5px] text-gray-600">
+                <li><strong>No celular:</strong> Instale o app na tela inicial para melhor desempenho em segundo plano.</li>
+                <li><strong>Som:</strong> Certifique-se de que o modo "Não Perturbe" ou "Silencioso" esteja desativado.</li>
+              </ul>
+            </div>
           </div>
 
           {/* Opções de Ativação / Toggles */}

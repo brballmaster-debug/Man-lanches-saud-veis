@@ -28,29 +28,8 @@ export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 const firestoreDbId = (firebaseConfig as any)?.firestoreDatabaseId;
 
-// Inicializa o Firestore com cache persistente multi-abas no IndexedDB:
-export const db: Firestore = (() => {
-  try {
-    return firestoreDbId
-      ? initializeFirestore(
-          app,
-          {
-            localCache: persistentLocalCache({
-              tabManager: persistentMultipleTabManager()
-            })
-          },
-          firestoreDbId
-        )
-      : initializeFirestore(app, {
-          localCache: persistentLocalCache({
-            tabManager: persistentMultipleTabManager()
-          })
-        });
-  } catch (_error) {
-    // Fallback caso a instância já tenha sido inicializada anteriormente
-    return firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
-  }
-})();
+// Inicializa o Firestore de forma nativa e estável
+export const db: Firestore = firestoreDbId ? getFirestore(app, firestoreDbId) : getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 
@@ -119,15 +98,36 @@ export const syncUserProfile = async (user: any, additionalData?: { name?: strin
   if (!user || !user.uid) return null;
 
   try {
+    if (typeof user.getIdToken === 'function') {
+      try {
+        await user.getIdToken();
+      } catch (_t) {
+        // Prossegue mesmo se getIdToken falhar
+      }
+    }
+
     const userRef = doc(db, 'users', user.uid);
     let userSnap;
     try {
       userSnap = await getDoc(userRef);
     } catch (readError: any) {
       if (readError?.code === 'permission-denied') {
-        handleFirestoreError(readError, OperationType.GET, `users/${user.uid}`);
+        // Pode ser atraso na propagação do token: aguarda 350ms, força refresh do token e tenta novamente
+        await new Promise(r => setTimeout(r, 350));
+        try {
+          if (typeof user.getIdToken === 'function') {
+            await user.getIdToken(true);
+          }
+          userSnap = await getDoc(userRef);
+        } catch (retryError: any) {
+          if (retryError?.code === 'permission-denied') {
+            handleFirestoreError(retryError, OperationType.GET, `users/${user.uid}`);
+          }
+          throw retryError;
+        }
+      } else {
+        throw readError;
       }
-      throw readError;
     }
 
     const isMaster = isMasterAdminEmail(user.email);
@@ -149,9 +149,21 @@ export const syncUserProfile = async (user: any, additionalData?: { name?: strin
         await setDoc(userRef, initialData);
       } catch (createError: any) {
         if (createError?.code === 'permission-denied') {
-          handleFirestoreError(createError, OperationType.CREATE, `users/${user.uid}`);
+          await new Promise(r => setTimeout(r, 350));
+          try {
+            if (typeof user.getIdToken === 'function') {
+              await user.getIdToken(true);
+            }
+            await setDoc(userRef, initialData);
+          } catch (retryCreateError: any) {
+            if (retryCreateError?.code === 'permission-denied') {
+              handleFirestoreError(retryCreateError, OperationType.CREATE, `users/${user.uid}`);
+            }
+            throw retryCreateError;
+          }
+        } else {
+          throw createError;
         }
-        throw createError;
       }
       return initialData;
     } else {
@@ -180,14 +192,26 @@ export const syncUserProfile = async (user: any, additionalData?: { name?: strin
         await setDoc(userRef, updates, { merge: true });
       } catch (updateError: any) {
         if (updateError?.code === 'permission-denied') {
-          handleFirestoreError(updateError, OperationType.UPDATE, `users/${user.uid}`);
+          await new Promise(r => setTimeout(r, 350));
+          try {
+            if (typeof user.getIdToken === 'function') {
+              await user.getIdToken(true);
+            }
+            await setDoc(userRef, updates, { merge: true });
+          } catch (retryUpdateError: any) {
+            if (retryUpdateError?.code === 'permission-denied') {
+              handleFirestoreError(retryUpdateError, OperationType.UPDATE, `users/${user.uid}`);
+            }
+            throw retryUpdateError;
+          }
+        } else {
+          throw updateError;
         }
-        throw updateError;
       }
       return { ...existingData, ...updates };
     }
   } catch (error) {
-    console.error("Erro ao sincronizar perfil do usuário:", error);
+    console.warn("Aviso ao sincronizar perfil do usuário:", error);
     return null;
   }
 };
@@ -199,6 +223,7 @@ export const signInAnonymously = async (source?: string) => {
   try {
     const result = await firebaseSignInAnonymously(auth);
     const user = result.user;
+    await new Promise(r => setTimeout(r, 150));
     await syncUserProfile(user, { source });
     return user;
   } catch (error: any) {

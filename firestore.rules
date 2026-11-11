@@ -71,8 +71,6 @@ service cloud.firestore {
              (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
              (!('role' in data) || data.role in ['admin', 'client']) &&
              (!('address' in data) || data.address is map) &&
-             (!('createdAt' in data) || data.createdAt is timestamp) &&
-             (!('lastLoginAt' in data) || data.lastLoginAt is timestamp) &&
              (!('source' in data) || (data.source is string && data.source.size() <= 50)) &&
              (!('isAnonymous' in data) || data.isAnonymous is bool);
     }
@@ -91,8 +89,7 @@ service cloud.firestore {
              data.address is map &&
              data.deliveryType is string &&
              data.deliveryType in ['delivery', 'pickup'] &&
-             data.status in ['pending', 'confirmed', 'delivered', 'cancelled'] &&
-             data.createdAt is timestamp;
+             data.status in ['pending', 'confirmed', 'delivered', 'cancelled'];
     }
 
     function isValidDeliverySlot(data) {

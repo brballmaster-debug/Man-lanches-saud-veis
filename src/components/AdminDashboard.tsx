@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db, isMasterAdminEmail } from '../firebase';
 import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData, Coupon, defaultCoupons } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, EyeOff, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard, Sparkles, Bell, Volume2, VolumeX, Play, ConciergeBell } from 'lucide-react';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, EyeOff, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard, Sparkles, Bell, Volume2, VolumeX, Play, ConciergeBell, MessageCircle } from 'lucide-react';
 import Logo from './Logo';
 import CouponManager from './CouponManager';
 import CareGuideQrModal from './CareGuideQrModal';
 import { renderCareGuideIcon } from './CareGuide';
+import WhatsAppAgenda from './WhatsAppAgenda';
 import { 
   getAdminNotificationSettings, 
   saveAdminNotificationSettings, 
@@ -197,7 +198,7 @@ const CurrencyInputField: React.FC<CurrencyInputFieldProps> = ({
 };
 
 export default function AdminDashboard({ onClose, products }: AdminDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'customers' | 'settings' | 'menu' | 'stock' | 'checkout' | 'care_guide'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'orders' | 'whatsapp_agenda' | 'customers' | 'settings' | 'menu' | 'stock' | 'checkout' | 'care_guide'>('dashboard');
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   
   const [orders, setOrders] = useState<Order[]>([]);
@@ -1349,7 +1350,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
     return Object.values(counts).sort((a, b) => b.count - a.count).slice(0, 5);
   }, [orders]);
 
-  const isMoreActive = ['menu', 'checkout', 'customers', 'care_guide', 'settings'].includes(activeTab);
+  const isMoreActive = ['menu', 'checkout', 'customers', 'care_guide', 'settings', 'whatsapp_agenda'].includes(activeTab);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-0 md:p-4 bg-[#FDFCF6] md:bg-black/50 md:backdrop-blur-sm">
@@ -1497,6 +1498,25 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
             {pendingOrdersCount > 0 && (
               <span
                 className="bg-red-600 text-white text-[11px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center shadow-sm animate-pulse tracking-tight"
+                title={`${pendingOrdersCount} pedido(s) pendente(s)`}
+              >
+                {pendingOrdersCount > 99 ? '99+' : pendingOrdersCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('whatsapp_agenda')}
+            className={`py-3 sm:py-4 px-3.5 sm:px-6 font-medium border-b-2 text-sm sm:text-base transition-colors flex items-center gap-2 whitespace-nowrap ${
+              activeTab === 'whatsapp_agenda' ? 'border-[#075E54] text-[#075E54] font-bold' : 'border-transparent text-mana-text-light hover:text-mana-text'
+            }`}
+          >
+            <div className="relative inline-flex items-center text-[#075E54]">
+              <MessageCircle size={18} />
+            </div>
+            <span>Agenda WhatsApp</span>
+            {pendingOrdersCount > 0 && (
+              <span
+                className="bg-[#25D366] text-white text-[11px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center shadow-xs"
                 title={`${pendingOrdersCount} pedido(s) pendente(s)`}
               >
                 {pendingOrdersCount > 99 ? '99+' : pendingOrdersCount}
@@ -1847,6 +1867,15 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       >
                         <Settings size={13} />
                         <span>Preferências</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('whatsapp_agenda')}
+                        className="px-3 py-1.5 rounded-lg bg-[#075E54] hover:bg-[#064e46] text-white text-xs font-bold transition-all shadow-2xs flex items-center gap-1.5 cursor-pointer active:scale-95"
+                        title="Abrir no modo Agenda WhatsApp"
+                      >
+                        <MessageCircle size={14} className="stroke-[2.5]" />
+                        <span>Agenda WhatsApp</span>
                       </button>
                     </div>
                   </div>
@@ -4987,6 +5016,18 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                   </div>
                 </div>
               )}
+
+              {activeTab === 'whatsapp_agenda' && (
+                <WhatsAppAgenda
+                  orders={orders}
+                  onUpdateOrderStatus={updateOrderStatus}
+                  myWhatsappNumber={whatsappNumber}
+                  pixKey={pixKey}
+                  pickUpHours={pickUpHours}
+                  deliveryHours={deliveryHours}
+                  onShowToast={showToast}
+                />
+              )}
             </>
           )}
         </div>
@@ -5096,6 +5137,38 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
             </div>
 
             <div className="space-y-1 overflow-y-auto py-1 overscroll-contain">
+              {/* Agenda WhatsApp */}
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('whatsapp_agenda');
+                  setShowMoreMenu(false);
+                }}
+                className={`w-full p-3 rounded-2xl flex items-center gap-3.5 transition-all text-left ${
+                  activeTab === 'whatsapp_agenda'
+                    ? 'bg-[#075E54]/15 text-[#075E54] font-bold ring-1 ring-[#075E54]/30'
+                    : 'text-stone-900 bg-emerald-50/50 hover:bg-emerald-100/60 border border-emerald-200/80 shadow-2xs'
+                }`}
+              >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+                  activeTab === 'whatsapp_agenda' ? 'bg-[#075E54] text-white' : 'bg-emerald-600 text-white'
+                }`}>
+                  <MessageCircle size={20} className="stroke-[2.5]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-stone-900 flex items-center gap-1.5">
+                    Agenda WhatsApp
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full uppercase">
+                      Atendimento
+                    </span>
+                  </div>
+                  <div className="text-xs text-stone-500 truncate">Ficha dos pedidos e mensagens de 1 toque</div>
+                </div>
+                {activeTab === 'whatsapp_agenda' && (
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#075E54] shrink-0"></span>
+                )}
+              </button>
+
               {/* Cardápio */}
               <button
                 type="button"
@@ -5319,7 +5392,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
             </div>
             <span>
               {isMoreActive 
-                ? (activeTab === 'menu' ? 'Cardápio' :
+                ? (activeTab === 'whatsapp_agenda' ? 'Agenda' :
+                   activeTab === 'menu' ? 'Cardápio' :
                    activeTab === 'checkout' ? 'Entregas' :
                    activeTab === 'customers' ? 'Clientes' :
                    activeTab === 'care_guide' ? 'Preparo' :

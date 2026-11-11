@@ -256,6 +256,14 @@ export const requestBrowserNotificationPermission = async (): Promise<Notificati
   }
   try {
     const permission = await Notification.requestPermission();
+    // Se concedido, garante registro imediato do Service Worker
+    if (permission === 'granted' && 'serviceWorker' in navigator) {
+      try {
+        await navigator.serviceWorker.register('/sw.js');
+      } catch (e) {
+        console.warn("Falha ao registrar Service Worker ao conceder permissão:", e);
+      }
+    }
     return permission;
   } catch (error) {
     console.warn("Erro ao solicitar permissão de notificação:", error);
@@ -264,28 +272,98 @@ export const requestBrowserNotificationPermission = async (): Promise<Notificati
 };
 
 /**
- * Envia notificação nativa do sistema / navegador para o administrador
+ * Retorna o registro ativo do Service Worker
  */
-export const sendSystemNotification = (
+export const getServiceWorkerRegistration = async (): Promise<ServiceWorkerRegistration | null> => {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return null;
+  }
+  try {
+    let reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) {
+      reg = await navigator.serviceWorker.register('/sw.js');
+    }
+    return reg;
+  } catch (err) {
+    console.warn("Falha ao obter registro do Service Worker:", err);
+    return null;
+  }
+};
+
+/**
+ * Verifica se o Service Worker está ativo no navegador
+ */
+export const getServiceWorkerStatus = async (): Promise<'active' | 'installing' | 'unsupported'> => {
+  if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+    return 'unsupported';
+  }
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg?.active) return 'active';
+    if (reg?.installing || reg?.waiting) return 'installing';
+    return 'active';
+  } catch {
+    return 'unsupported';
+  }
+};
+
+/**
+ * Envia notificação nativa do sistema / navegador para o administrador.
+ * Utiliza prioritariamente o Service Worker (exigido pelo Android e que funciona em segundo plano)
+ * com fallback para Notification API de janela.
+ */
+export const sendSystemNotification = async (
   title: string,
   options: {
     body: string;
     icon?: string;
     tag?: string;
     onClick?: () => void;
+    data?: any;
   }
 ) => {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
 
+  const appIcon = options.icon || '/logo.png?v=5';
+  const tag = options.tag || 'mana-order-notification';
+
+  const notificationPayload = {
+    body: options.body,
+    icon: appIcon,
+    badge: appIcon,
+    tag: tag,
+    vibrate: [250, 100, 250, 100, 450],
+    renotify: true,
+    requireInteraction: true,
+    data: options.data || { url: '/' },
+    actions: [
+      { action: 'open_order', title: 'Ver Pedido 🚀' }
+    ]
+  };
+
+  // 1. Tenta via Service Worker (obrigatório para Android Chrome e telas bloqueadas/background)
+  if ('serviceWorker' in navigator) {
+    try {
+      const reg = await getServiceWorkerRegistration();
+      if (reg && 'showNotification' in reg) {
+        await reg.showNotification(title, notificationPayload);
+        return;
+      }
+    } catch (swErr) {
+      console.warn("Falha ao disparar notificação via Service Worker:", swErr);
+    }
+  }
+
+  // 2. Fallback para Notification API clássica (desktop / aba em foco)
   try {
     const notification = new Notification(title, {
       body: options.body,
-      icon: options.icon || '/logo.png?v=5',
-      badge: '/logo.png?v=5',
-      tag: options.tag || 'mana-order-notification',
+      icon: appIcon,
+      badge: appIcon,
+      tag: tag,
       requireInteraction: true,
-      silent: true // Usamos o nosso sintetizador de áudio de alta fidelidade
+      silent: false
     });
 
     notification.onclick = () => {
@@ -339,14 +417,15 @@ export const notifyNewOrder = (
     body,
     icon: options?.appIconUrl || '/logo.png?v=5',
     tag: `order-${order.id}`,
-    onClick: options?.onClick
+    onClick: options?.onClick,
+    data: { url: '/', orderId: order.id }
   });
 };
 
 /**
- * Realiza um teste imediato de notificação com som do sino de restaurante e vibração
+ * Realiza um teste imediato de notificação com som do sino de restaurante, vibração e push nativo
  */
-export const testAdminNotification = (options?: { 
+export const testAdminNotification = async (options?: { 
   appIconUrl?: string; 
   soundType?: BellSoundType;
   onToast?: (msg: string) => void 
@@ -357,14 +436,54 @@ export const testAdminNotification = (options?: {
 
   // Envia notificação nativa se permitida
   if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-    sendSystemNotification('🔔 Sino de Balcão • Teste Maná', {
-      body: 'Sino de restaurante testado com sucesso! Seus alertas de novos pedidos estão prontos.',
+    await sendSystemNotification('🔔 Sino de Balcão • Teste Maná', {
+      body: 'Sino de restaurante e notificação nativa testados com sucesso! Seus alertas estão prontos.',
       icon: options?.appIconUrl || '/logo.png?v=5',
       tag: 'test-notification'
     });
   }
 
   if (options?.onToast) {
-    options.onToast('Sino de restaurante testado com sucesso!');
+    options.onToast('Notificação nativa e sino disparados com sucesso!');
   }
+};
+
+/**
+ * Executa um teste com contagem regressiva para que o administrador possa
+ * bloquear o celular ou alternar para outro app e verificar a notificação em segundo plano.
+ */
+export const testDelayedBackgroundNotification = (
+  delaySeconds: number = 4,
+  options?: {
+    appIconUrl?: string;
+    soundType?: BellSoundType;
+    onTick?: (remaining: number) => void;
+    onToast?: (msg: string) => void;
+  }
+): (() => void) => {
+  let remaining = delaySeconds;
+  if (options?.onTick) options.onTick(remaining);
+
+  const intervalId = window.setInterval(async () => {
+    remaining -= 1;
+    if (options?.onTick) options.onTick(remaining);
+
+    if (remaining <= 0) {
+      window.clearInterval(intervalId);
+      playOrderChime(options?.soundType);
+      triggerOrderVibration();
+
+      await sendSystemNotification('🔔 Teste em Segundo Plano • Maná', {
+        body: 'Notificação nativa recebida mesmo com a tela ou app em segundo plano!',
+        icon: options?.appIconUrl || '/logo.png?v=5',
+        tag: 'test-background-notification'
+      });
+
+      if (options?.onToast) {
+        options.onToast('Notificação em segundo plano disparada!');
+      }
+    }
+  }, 1000);
+
+  return () => window.clearInterval(intervalId);
 };
