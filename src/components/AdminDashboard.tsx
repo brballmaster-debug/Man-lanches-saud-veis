@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, deleteDoc, getDocs, setDoc } from 'firebase/firestore';
 import { db, isMasterAdminEmail } from '../firebase';
 import { Order, UserDocument, Product, InfoSection, CareGuideData, CareGuideItem, defaultCareGuideData, Coupon, defaultCoupons } from '../types';
-import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, EyeOff, MoreHorizontal, ChevronDown, Smartphone, Tag, QrCode, CreditCard, Sparkles, Bell, Volume2, VolumeX, Play, ConciergeBell, MessageCircle } from 'lucide-react';
+import { X, Package, Users, Settings, Search, CheckCircle, XCircle, Trash2, Power, Clock, Upload, Utensils, Plus, Archive, Info, ShoppingBag, MapPin, Leaf, Copy, Filter, ArrowUpDown, BookOpen, Snowflake, Flame, Thermometer, Lightbulb, Heart, RotateCcw, AlertCircle, Check, Image as ImageIcon, Sliders, Eye, EyeOff, MoreHorizontal, ChevronDown, ChevronRight, Smartphone, Tag, QrCode, CreditCard, Sparkles, Bell, Volume2, VolumeX, Play, ConciergeBell, MessageCircle, Palette } from 'lucide-react';
 import Logo from './Logo';
 import CouponManager from './CouponManager';
 import CareGuideQrModal from './CareGuideQrModal';
@@ -24,6 +24,12 @@ import {
   getBrasiliaTimeParts,
   isScheduledFieldActive,
 } from '../utils/pickupSchedule';
+import {
+  BANNER_COLOR_PRESETS,
+  DEFAULT_CARE_GUIDE_BANNER_COLOR,
+  DEFAULT_CARE_GUIDE_BANNER_TEXT,
+  resolveBannerStyle,
+} from '../utils/careGuideBanner';
 
 const GUIDE_ICONS = [
   { value: 'flame', label: 'Chama / Fogo' },
@@ -522,6 +528,8 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setCareGuideData({
           ...defaultCareGuideData,
           ...data,
+          bannerText: data.bannerText !== undefined ? data.bannerText : DEFAULT_CARE_GUIDE_BANNER_TEXT,
+          bannerColor: data.bannerColor || DEFAULT_CARE_GUIDE_BANNER_COLOR,
           items: data.items || defaultCareGuideData.items,
           importantBullets: data.importantBullets || defaultCareGuideData.importantBullets,
           manaWayPoints: data.manaWayPoints || defaultCareGuideData.manaWayPoints
@@ -4834,6 +4842,204 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       <span>Visualizar & Baixar PNG</span>
                     </button>
                   </div>
+
+                  {/* Personalização do Banner da Loja (Texto & Cor) */}
+                  {(() => {
+                    const currentBannerText =
+                      careGuideData.bannerText !== undefined
+                        ? careGuideData.bannerText
+                        : DEFAULT_CARE_GUIDE_BANNER_TEXT;
+                    const currentBannerColor =
+                      careGuideData.bannerColor || DEFAULT_CARE_GUIDE_BANNER_COLOR;
+                    const bannerStyle = resolveBannerStyle(currentBannerColor);
+
+                    return (
+                      <div className="bg-white rounded-xl p-5 sm:p-6 shadow-sm border border-mana-gold/20 space-y-5">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-mana-gold/20 pb-3">
+                          <div>
+                            <h4 className="font-serif font-bold text-mana-green text-base flex items-center gap-2">
+                              <Palette size={18} className="text-mana-gold" />
+                              Personalização do Banner na Loja
+                            </h4>
+                            <p className="text-xs text-mana-text-light mt-0.5">
+                              Edite ou apague a frase do banner e escolha a cor de destaque exibida na tela inicial.
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Texto do Banner */}
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <label className="block text-xs font-bold text-mana-text">
+                              Texto do Banner
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCareGuideData((prev) => ({
+                                    ...prev,
+                                    bannerText: DEFAULT_CARE_GUIDE_BANNER_TEXT,
+                                  }))
+                                }
+                                className="text-[11px] font-semibold text-mana-green hover:underline flex items-center gap-1 cursor-pointer"
+                              >
+                                <RotateCcw size={12} />
+                                <span>Frase padrão</span>
+                              </button>
+                              <span className="text-gray-300">|</span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setCareGuideData((prev) => ({ ...prev, bannerText: '' }))
+                                }
+                                className="text-[11px] font-semibold text-red-600 hover:underline flex items-center gap-1 cursor-pointer"
+                              >
+                                <Trash2 size={12} />
+                                <span>Apagar texto</span>
+                              </button>
+                            </div>
+                          </div>
+                          <input
+                            type="text"
+                            value={currentBannerText}
+                            onChange={(e) =>
+                              setCareGuideData((prev) => ({
+                                ...prev,
+                                bannerText: e.target.value,
+                              }))
+                            }
+                            placeholder="Digite um texto para o banner ou deixe em branco para não exibir"
+                            className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                          />
+                        </div>
+
+                        {/* Cor do Banner */}
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <label className="block text-xs font-bold text-mana-text">
+                              Cor do Banner
+                            </label>
+                            <span className="text-[11px] font-mono font-semibold text-mana-text-light bg-mana-bg px-2 py-0.5 rounded border border-mana-gold/20">
+                              {bannerStyle.hex}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            {BANNER_COLOR_PRESETS.map((preset) => {
+                              const isSelected =
+                                bannerStyle.hex.toUpperCase() === preset.hex.toUpperCase();
+                              return (
+                                <button
+                                  key={preset.id}
+                                  type="button"
+                                  onClick={() =>
+                                    setCareGuideData((prev) => ({
+                                      ...prev,
+                                      bannerColor: preset.hex,
+                                    }))
+                                  }
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                                    isSelected
+                                      ? 'border-mana-green ring-2 ring-mana-green/25 bg-mana-green/5 text-mana-green'
+                                      : 'border-gray-200 hover:border-mana-gold/40 bg-white text-mana-text'
+                                  }`}
+                                >
+                                  <span
+                                    className="w-4 h-4 rounded-full border border-black/15 shrink-0"
+                                    style={{ backgroundColor: preset.hex }}
+                                  />
+                                  <span>{preset.label}</span>
+                                  {isSelected && <Check size={13} className="text-mana-green" />}
+                                </button>
+                              );
+                            })}
+
+                            {/* Seletor livre de cor personalizada */}
+                            <label className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-mana-gold/30 hover:border-mana-green bg-mana-bg/50 text-xs font-semibold text-mana-text cursor-pointer transition-colors">
+                              <input
+                                type="color"
+                                value={
+                                  /^#[0-9A-Fa-f]{6}$/.test(bannerStyle.hex)
+                                    ? bannerStyle.hex
+                                    : DEFAULT_CARE_GUIDE_BANNER_COLOR
+                                }
+                                onChange={(e) =>
+                                  setCareGuideData((prev) => ({
+                                    ...prev,
+                                    bannerColor: e.target.value.toUpperCase(),
+                                  }))
+                                }
+                                className="w-6 h-6 rounded border-0 bg-transparent p-0 cursor-pointer"
+                              />
+                              <span>Outra cor</span>
+                            </label>
+                          </div>
+                        </div>
+
+                        {/* Pré-visualização ao vivo */}
+                        <div className="space-y-1.5 pt-1">
+                          <span className="block text-[11px] font-bold uppercase tracking-wider text-mana-text-light">
+                            Pré-visualização do Banner na Loja
+                          </span>
+                          <div
+                            className={`w-full p-4 sm:p-5 rounded-2xl border flex items-center justify-between gap-4 transition-all text-left ${
+                              bannerStyle.preset
+                                ? bannerStyle.preset.containerClass
+                                : 'border-black/10 shadow-md'
+                            }`}
+                            style={
+                              bannerStyle.preset
+                                ? undefined
+                                : { backgroundColor: bannerStyle.hex }
+                            }
+                          >
+                            <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+                              <div
+                                className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0 ${
+                                  bannerStyle.isDark
+                                    ? 'bg-white/20 text-white border border-white/25'
+                                    : 'bg-mana-green text-white shadow-sm'
+                                }`}
+                              >
+                                <BookOpen size={22} />
+                              </div>
+                              <div className="min-w-0">
+                                <h3
+                                  className={`font-serif font-bold text-base sm:text-lg ${
+                                    bannerStyle.isDark ? 'text-white' : 'text-mana-green'
+                                  }`}
+                                >
+                                  Guia de Conservação e Preparo
+                                </h3>
+                                {currentBannerText.trim() && (
+                                  <p
+                                    className={`text-xs sm:text-sm mt-0.5 ${
+                                      bannerStyle.isDark
+                                        ? 'text-white/90'
+                                        : 'text-mana-text-light'
+                                    }`}
+                                  >
+                                    {currentBannerText}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                            <div
+                              className={`flex items-center gap-1 font-bold text-xs sm:text-sm shrink-0 px-3 sm:px-4 py-2 rounded-xl ${
+                                bannerStyle.isDark
+                                  ? 'bg-white text-green-800 shadow-sm'
+                                  : 'bg-mana-green/10 text-mana-green'
+                              }`}
+                            >
+                              <span className="hidden xs:inline">Acessar</span>
+                              <ChevronRight size={16} />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Bloco 1: Textos do Cabeçalho e Introdução */}
                   <div className="bg-white rounded-xl p-6 shadow-sm border border-mana-gold/20 space-y-4">

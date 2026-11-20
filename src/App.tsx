@@ -27,6 +27,11 @@ import {
   isScheduledFieldActive,
   ScheduledFieldConfig,
 } from './utils/pickupSchedule';
+import {
+  DEFAULT_CARE_GUIDE_BANNER_COLOR,
+  DEFAULT_CARE_GUIDE_BANNER_TEXT,
+  resolveBannerStyle,
+} from './utils/careGuideBanner';
 
 // Modais e painéis pesados carregados sob demanda (Code Splitting / Lazy Loading)
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
@@ -269,6 +274,8 @@ export default function App() {
   const [catalogBadge, setCatalogBadge] = useState('Produção limitada');
   const [whatsappNumber, setWhatsappNumber] = useState('5535998579552');
   const [promotion, setPromotion] = useState<Promotion | null>(null);
+  const [careGuideBannerText, setCareGuideBannerText] = useState(DEFAULT_CARE_GUIDE_BANNER_TEXT);
+  const [careGuideBannerColor, setCareGuideBannerColor] = useState(DEFAULT_CARE_GUIDE_BANNER_COLOR);
 
   // Sincroniza dinamicamente os ícones do aplicativo (PWA e TWA Android) no navegador
   useEffect(() => {
@@ -562,6 +569,21 @@ export default function App() {
       console.warn("Firestore [settings/coupons] offline/reconnecting:", error.message);
     });
 
+    const unsubCareGuide = onSnapshot(doc(db, 'settings', 'care_guide'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setCareGuideBannerText(
+          data.bannerText !== undefined ? data.bannerText : DEFAULT_CARE_GUIDE_BANNER_TEXT
+        );
+        setCareGuideBannerColor(data.bannerColor || DEFAULT_CARE_GUIDE_BANNER_COLOR);
+      } else {
+        setCareGuideBannerText(DEFAULT_CARE_GUIDE_BANNER_TEXT);
+        setCareGuideBannerColor(DEFAULT_CARE_GUIDE_BANNER_COLOR);
+      }
+    }, (error) => {
+      console.warn("Firestore [settings/care_guide] offline/reconnecting:", error.message);
+    });
+
     const safetyTimer = setTimeout(() => {
       setIsLoading(false);
     }, 2000);
@@ -597,6 +619,7 @@ export default function App() {
       unsubInfoBanner();
       unsubPromo();
       unsubCoupons();
+      unsubCareGuide();
       unsubProducts();
     };
   }, []);
@@ -1348,35 +1371,66 @@ export default function App() {
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 pt-8 pb-24 sm:pb-8">
         {/* Botão de Destaque: Guia de Conservação e Preparo */}
-        <div className="mb-6">
-          <button
-            onClick={() => setShowCareGuide(true)}
-            className="w-full bg-gradient-to-r from-emerald-50/90 via-white to-amber-50/80 hover:from-emerald-100 hover:via-white hover:to-amber-100 border border-mana-gold/30 hover:border-mana-green/50 p-4 sm:p-5 rounded-2xl flex items-center justify-between gap-4 transition-all duration-300 group shadow-sm hover:shadow-md text-left"
-          >
-            <div className="flex items-center gap-3.5 sm:gap-4">
-              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-mana-green text-white flex items-center justify-center shadow-md shadow-mana-green/20 group-hover:scale-105 transition-transform shrink-0">
-                <BookOpen size={22} />
-              </div>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-serif font-bold text-mana-green text-base sm:text-lg group-hover:text-mana-green-dark">
-                    Guia de Conservação e Preparo
-                  </h3>
-                  <span className="text-[10px] uppercase font-bold tracking-wider bg-mana-gold/20 text-mana-gold px-2 py-0.5 rounded-full border border-mana-gold/30">
-                    Dicas
-                  </span>
+        {(() => {
+          const bannerStyle = resolveBannerStyle(careGuideBannerColor);
+          return (
+            <div className="mb-6">
+              <button
+                onClick={() => setShowCareGuide(true)}
+                className={`w-full p-4 sm:p-5 rounded-2xl border flex items-center justify-between gap-4 transition-all duration-300 group hover:shadow-lg text-left cursor-pointer ${
+                  bannerStyle.preset
+                    ? bannerStyle.preset.containerClass
+                    : 'border-black/10 shadow-md hover:brightness-95'
+                }`}
+                style={
+                  bannerStyle.preset
+                    ? undefined
+                    : { backgroundColor: bannerStyle.hex }
+                }
+              >
+                <div className="flex items-center gap-3.5 sm:gap-4 min-w-0">
+                  <div
+                    className={`w-11 h-11 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform shrink-0 ${
+                      bannerStyle.isDark
+                        ? 'bg-white/20 text-white border border-white/25'
+                        : 'bg-mana-green text-white shadow-md shadow-mana-green/20'
+                    }`}
+                  >
+                    <BookOpen size={22} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3
+                      className={`font-serif font-bold text-base sm:text-lg ${
+                        bannerStyle.isDark ? 'text-white' : 'text-mana-green group-hover:text-mana-green-dark'
+                      }`}
+                    >
+                      Guia de Conservação e Preparo
+                    </h3>
+                    {careGuideBannerText.trim() && (
+                      <p
+                        className={`text-xs sm:text-sm mt-0.5 ${
+                          bannerStyle.isDark ? 'text-white/90' : 'text-mana-text-light'
+                        }`}
+                      >
+                        {careGuideBannerText}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <p className="text-xs sm:text-sm text-mana-text-light mt-0.5 line-clamp-1 sm:line-clamp-none">
-                  Aprenda as melhores formas de armazenar, aquecer e manter a frescura dos seus lanches saudáveis.
-                </p>
-              </div>
+                <div
+                  className={`flex items-center gap-1 font-bold text-xs sm:text-sm shrink-0 px-3 sm:px-4 py-2 rounded-xl transition-all ${
+                    bannerStyle.isDark
+                      ? 'bg-white text-green-800 group-hover:bg-emerald-50 shadow-sm'
+                      : 'bg-mana-green/10 text-mana-green group-hover:bg-mana-green group-hover:text-white'
+                  }`}
+                >
+                  <span className="hidden xs:inline">Acessar</span>
+                  <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
+                </div>
+              </button>
             </div>
-            <div className="flex items-center gap-1 text-mana-green font-bold text-xs sm:text-sm shrink-0 bg-mana-green/10 group-hover:bg-mana-green group-hover:text-white px-3 sm:px-4 py-2 rounded-xl transition-all">
-              <span className="hidden xs:inline">Acessar</span>
-              <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
-            </div>
-          </button>
-        </div>
+          );
+        })()}
         {infoBannerData.title && infoBannerData.sections?.length > 0 && (
           <div className="bg-mana-gold/10 border border-mana-gold/30 rounded-2xl p-6 mb-8">
             <h3 className="font-serif text-xl font-bold text-mana-green mb-4 flex items-center gap-2">

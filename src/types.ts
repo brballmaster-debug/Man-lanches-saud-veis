@@ -143,6 +143,8 @@ export interface CareGuideData {
   headerTitle: string;
   headerSubtitle: string;
   introText: string;
+  bannerText?: string;
+  bannerColor?: string;
   items: CareGuideItem[];
   importantBullets: string[];
   manaWayPoints: string[];
@@ -156,6 +158,8 @@ export const defaultCareGuideData: CareGuideData = {
   headerTitle: 'GUIA MANÁ',
   headerSubtitle: 'Sabor e equilíbrio na sua rotina.\nObrigada por escolher a Maná! ♥',
   introText: 'Confira abaixo como conservar e preparar os seus lanchinhos.',
+  bannerText: 'Clique aqui para saber a melhor maneira de aproveitar seu lanche.',
+  bannerColor: '#15803D',
   items: [
     {
       id: '1',
