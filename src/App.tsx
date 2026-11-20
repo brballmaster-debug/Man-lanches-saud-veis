@@ -19,6 +19,14 @@ import BottomNav, { BottomNavTab } from './components/BottomNav';
 import { notifyNewOrder } from './utils/adminNotification';
 import { AdminNewOrderBanner } from './components/AdminNewOrderBanner';
 import { AdminNotificationSettingsModal } from './components/AdminNotificationSettingsModal';
+import {
+  ALL_DAYS,
+  DEFAULT_PICKUP_HOURS_CONFIG,
+  DEFAULT_PICKUP_INFO,
+  DEFAULT_PICKUP_INFO_CONFIG,
+  isScheduledFieldActive,
+  ScheduledFieldConfig,
+} from './utils/pickupSchedule';
 
 // Modais e painéis pesados carregados sob demanda (Code Splitting / Lazy Loading)
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
@@ -228,7 +236,26 @@ export default function App() {
   const [deliverySlotsEnabled, setDeliverySlotsEnabled] = useState(true);
   const [deliveryPickUpEnabled, setDeliveryPickUpEnabled] = useState(false);
   const [pickUpHours, setPickUpHours] = useState('17:30 às 19:00');
+  const [pickUpHoursConfig, setPickUpHoursConfig] = useState<ScheduledFieldConfig>(DEFAULT_PICKUP_HOURS_CONFIG);
+  const [pickUpInfo, setPickUpInfo] = useState(DEFAULT_PICKUP_INFO);
+  const [pickUpInfoConfig, setPickUpInfoConfig] = useState<ScheduledFieldConfig>(DEFAULT_PICKUP_INFO_CONFIG);
+  const [pickupClockTick, setPickupClockTick] = useState(() => Date.now());
   const [deliveryHours, setDeliveryHours] = useState('13:00 às 19:00');
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setPickupClockTick(Date.now());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const isPickUpHoursActive = useMemo(() => {
+    return isScheduledFieldActive(pickUpHoursConfig, new Date(pickupClockTick));
+  }, [pickUpHoursConfig, pickupClockTick]);
+
+  const isPickUpInfoActive = useMemo(() => {
+    return isScheduledFieldActive(pickUpInfoConfig, new Date(pickupClockTick));
+  }, [pickUpInfoConfig, pickupClockTick]);
   const [deliveryFeeSetting, setDeliveryFeeSetting] = useState(5.00);
   const [freeShippingThreshold, setFreeShippingThreshold] = useState(50.00);
   const [homeTitle, setHomeTitle] = useState('Maná');
@@ -426,6 +453,27 @@ export default function App() {
         setDeliverySlotsEnabled(data.deliverySlotsEnabled !== false);
         setDeliveryPickUpEnabled(data.deliveryPickUpEnabled === true);
         setPickUpHours(data.pickUpHours || '17:30 às 19:00');
+        setPickUpHoursConfig({
+          enabled: data.pickUpHoursEnabled !== false,
+          scheduleEnabled: data.pickUpHoursScheduleEnabled === true,
+          scheduleDays:
+            Array.isArray(data.pickUpHoursScheduleDays) && data.pickUpHoursScheduleDays.length > 0
+              ? data.pickUpHoursScheduleDays
+              : ALL_DAYS,
+          startTime: data.pickUpHoursStartTime || '17:30',
+          endTime: data.pickUpHoursEndTime || '19:00',
+        });
+        setPickUpInfo(data.pickUpInfo !== undefined ? data.pickUpInfo : DEFAULT_PICKUP_INFO);
+        setPickUpInfoConfig({
+          enabled: data.pickUpInfoEnabled !== false,
+          scheduleEnabled: data.pickUpInfoScheduleEnabled === true,
+          scheduleDays:
+            Array.isArray(data.pickUpInfoScheduleDays) && data.pickUpInfoScheduleDays.length > 0
+              ? data.pickUpInfoScheduleDays
+              : ALL_DAYS,
+          startTime: data.pickUpInfoStartTime || '08:00',
+          endTime: data.pickUpInfoEndTime || '19:00',
+        });
         setWhatsappNumber(data.whatsappNumber || '5535998579552');
         setDeadlineDay(data.deadlineDay !== undefined ? data.deadlineDay : 4);
         setDeadlineHour(data.deadlineHour !== undefined ? data.deadlineHour : 21);
@@ -439,7 +487,6 @@ export default function App() {
               : 50.00;
         setFreeShippingThreshold(typeof rawFreeShipping === 'number' && !isNaN(rawFreeShipping) ? rawFreeShipping : (Number(rawFreeShipping) || 50.00));
         setDeliveryHours(data.deliveryHours || '13:00 às 19:00');
-        setPickUpHours(data.pickUpHours || '17:30 às 19:00');
         setHomeTitle(data.homeTitle || 'Maná');
         setHomeSubtitle(data.homeSubtitle || 'Lanches Saudáveis');
         const fetchedLogo = data.logoUrl || '';
@@ -986,7 +1033,12 @@ export default function App() {
       
       if (deliveryType === 'pickup') {
         message += `\n🏪 *Informações da Retirada:*`;
-        message += `\nJanela de Retirada: ${pickUpHours}`;
+        if (isPickUpHoursActive && pickUpHours.trim()) {
+          message += `\nJanela de Retirada: ${pickUpHours}`;
+        }
+        if (isPickUpInfoActive && pickUpInfo.trim()) {
+          message += `\n${pickUpInfo.trim()}`;
+        }
       } else {
         message += `\n📍 *Endereço de Entrega:*`;
         message += `\n${address.street}, ${address.number}`;
@@ -2068,8 +2120,15 @@ export default function App() {
                             <Clock size={24} />
                           </div>
                           <h3 className="font-serif text-lg font-bold text-mana-green mb-1">Informações da Retirada</h3>
-                          <p className="text-sm text-mana-text font-medium mb-1">Horário: <span className="text-mana-gold">{pickUpHours}</span></p>
-                          <p className="text-[11px] text-mana-text-light px-2 leading-tight">Compareça ao local no horário informado para retirar o seu pedido!</p>
+                          {isPickUpHoursActive && pickUpHours.trim() && (
+                            <p className="text-sm text-mana-text font-medium mb-1">Horário: <span className="text-mana-gold">{pickUpHours}</span></p>
+                          )}
+                          {isPickUpInfoActive && pickUpInfo.trim() && (
+                            <p className="text-xs text-mana-text-light px-2 leading-relaxed whitespace-pre-line">{pickUpInfo.trim()}</p>
+                          )}
+                          {(!isPickUpHoursActive || !pickUpHours.trim()) && (!isPickUpInfoActive || !pickUpInfo.trim()) && (
+                            <p className="text-xs text-mana-text-light px-2 leading-tight">Você selecionou a retirada do pedido no local.</p>
+                          )}
                         </div>
                       ) : (
                         <>
@@ -2329,12 +2388,20 @@ export default function App() {
                           <Clock size={18} /> {deliveryType === 'pickup' ? 'Data da Retirada' : 'Data da Entrega'}
                         </h3>
                         <p className="text-sm text-mana-text">Seu pedido {deliveryType === 'pickup' ? 'estará disponível para retirada' : 'será entregue'} na <span className="font-bold">{deliveryDate}</span>.</p>
-                        <p className="text-xs text-mana-text-light mt-1">
-                          {deliveryType === 'pickup' 
-                            ? `Horário: ${pickUpHours}` 
-                            : `Horário: ${deliveryHours}`
-                          }
-                        </p>
+                        {deliveryType === 'pickup' ? (
+                          <div className="space-y-1 mt-1">
+                            {isPickUpHoursActive && pickUpHours.trim() && (
+                              <p className="text-xs text-mana-text-light">Horário: {pickUpHours}</p>
+                            )}
+                            {isPickUpInfoActive && pickUpInfo.trim() && (
+                              <p className="text-xs text-mana-text-light whitespace-pre-line">{pickUpInfo.trim()}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-mana-text-light mt-1">
+                            {`Horário: ${deliveryHours}`}
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
@@ -2363,7 +2430,12 @@ export default function App() {
                               {address.complement && ` (${address.complement})`}
                             </p>
                           ) : (
-                            <p className="text-xs text-mana-text-light mt-1">Retirada no Local: {pickUpHours}</p>
+                            <div className="text-xs text-mana-text-light mt-1 space-y-0.5">
+                              <p>Retirada no Local{isPickUpHoursActive && pickUpHours.trim() ? `: ${pickUpHours}` : ''}</p>
+                              {isPickUpInfoActive && pickUpInfo.trim() && (
+                                <p className="whitespace-pre-line">{pickUpInfo.trim()}</p>
+                              )}
+                            </div>
                           )}
                         </div>
                       </div>

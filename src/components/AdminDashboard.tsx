@@ -17,6 +17,13 @@ import {
   playOrderChime
 } from '../utils/adminNotification';
 import { AdminNotificationSettingsModal } from './AdminNotificationSettingsModal';
+import {
+  ALL_DAYS,
+  DAYS_SHORT_PT,
+  DEFAULT_PICKUP_INFO,
+  getBrasiliaTimeParts,
+  isScheduledFieldActive,
+} from '../utils/pickupSchedule';
 
 const GUIDE_ICONS = [
   { value: 'flame', label: 'Chama / Fogo' },
@@ -211,6 +218,18 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   const [deliverySlotsEnabled, setDeliverySlotsEnabled] = useState(true);
   const [deliveryPickUpEnabled, setDeliveryPickUpEnabled] = useState(false);
   const [pickUpHours, setPickUpHours] = useState('17:30 às 19:00');
+  const [pickUpHoursEnabled, setPickUpHoursEnabled] = useState(true);
+  const [pickUpHoursScheduleEnabled, setPickUpHoursScheduleEnabled] = useState(false);
+  const [pickUpHoursScheduleDays, setPickUpHoursScheduleDays] = useState<number[]>(ALL_DAYS);
+  const [pickUpHoursStartTime, setPickUpHoursStartTime] = useState('17:30');
+  const [pickUpHoursEndTime, setPickUpHoursEndTime] = useState('19:00');
+  const [pickUpInfo, setPickUpInfo] = useState(DEFAULT_PICKUP_INFO);
+  const [pickUpInfoEnabled, setPickUpInfoEnabled] = useState(true);
+  const [pickUpInfoScheduleEnabled, setPickUpInfoScheduleEnabled] = useState(false);
+  const [pickUpInfoScheduleDays, setPickUpInfoScheduleDays] = useState<number[]>(ALL_DAYS);
+  const [pickUpInfoStartTime, setPickUpInfoStartTime] = useState('08:00');
+  const [pickUpInfoEndTime, setPickUpInfoEndTime] = useState('19:00');
+  const [nowTick, setNowTick] = useState(() => Date.now());
   const [deliveryHours, setDeliveryHours] = useState('13:00 às 19:00');
   const [deliveryFee, setDeliveryFee] = useState(5.00);
   const [freeShippingThreshold, setFreeShippingThreshold] = useState(50.00);
@@ -332,6 +351,13 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
   };
 
   useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTick(Date.now());
+    }, 30000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
     const qOrders = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
     const unsubOrders = onSnapshot(qOrders, (snapshot) => {
       const fetchedOrders = snapshot.docs.map(doc => ({
@@ -370,6 +396,25 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         setDeliverySlotsEnabled(data.deliverySlotsEnabled !== false);
         setDeliveryPickUpEnabled(data.deliveryPickUpEnabled === true);
         setPickUpHours(data.pickUpHours || '17:30 às 19:00');
+        setPickUpHoursEnabled(data.pickUpHoursEnabled !== false);
+        setPickUpHoursScheduleEnabled(data.pickUpHoursScheduleEnabled === true);
+        setPickUpHoursScheduleDays(
+          Array.isArray(data.pickUpHoursScheduleDays) && data.pickUpHoursScheduleDays.length > 0
+            ? data.pickUpHoursScheduleDays
+            : ALL_DAYS
+        );
+        setPickUpHoursStartTime(data.pickUpHoursStartTime || '17:30');
+        setPickUpHoursEndTime(data.pickUpHoursEndTime || '19:00');
+        setPickUpInfo(data.pickUpInfo !== undefined ? data.pickUpInfo : DEFAULT_PICKUP_INFO);
+        setPickUpInfoEnabled(data.pickUpInfoEnabled !== false);
+        setPickUpInfoScheduleEnabled(data.pickUpInfoScheduleEnabled === true);
+        setPickUpInfoScheduleDays(
+          Array.isArray(data.pickUpInfoScheduleDays) && data.pickUpInfoScheduleDays.length > 0
+            ? data.pickUpInfoScheduleDays
+            : ALL_DAYS
+        );
+        setPickUpInfoStartTime(data.pickUpInfoStartTime || '08:00');
+        setPickUpInfoEndTime(data.pickUpInfoEndTime || '19:00');
         setWhatsappNumber(data.whatsappNumber || '5535998579552');
         setDeliveryDeadlineDay(data.deadlineDay !== undefined ? data.deadlineDay : 4);
         setDeliveryDeadlineHour(data.deadlineHour !== undefined ? data.deadlineHour : 21);
@@ -575,6 +620,17 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
         deadlineHour: Number.isFinite(deliveryDeadlineHour) ? deliveryDeadlineHour : 21,
         deliveryPickUpEnabled: Boolean(deliveryPickUpEnabled),
         pickUpHours: pickUpHours || '17:30 às 19:00',
+        pickUpHoursEnabled: Boolean(pickUpHoursEnabled),
+        pickUpHoursScheduleEnabled: Boolean(pickUpHoursScheduleEnabled),
+        pickUpHoursScheduleDays: Array.isArray(pickUpHoursScheduleDays) && pickUpHoursScheduleDays.length > 0 ? pickUpHoursScheduleDays : ALL_DAYS,
+        pickUpHoursStartTime: pickUpHoursStartTime || '17:30',
+        pickUpHoursEndTime: pickUpHoursEndTime || '19:00',
+        pickUpInfo: pickUpInfo ?? DEFAULT_PICKUP_INFO,
+        pickUpInfoEnabled: Boolean(pickUpInfoEnabled),
+        pickUpInfoScheduleEnabled: Boolean(pickUpInfoScheduleEnabled),
+        pickUpInfoScheduleDays: Array.isArray(pickUpInfoScheduleDays) && pickUpInfoScheduleDays.length > 0 ? pickUpInfoScheduleDays : ALL_DAYS,
+        pickUpInfoStartTime: pickUpInfoStartTime || '08:00',
+        pickUpInfoEndTime: pickUpInfoEndTime || '19:00',
         deliveryHours: deliveryHours || '13:00 às 19:00',
         deliveryFee: typeof deliveryFee === 'number' && !isNaN(deliveryFee) ? deliveryFee : 5.00,
         freeShippingThreshold: typeof freeShippingThreshold === 'number' && !isNaN(freeShippingThreshold) ? freeShippingThreshold : 50.00,
@@ -3304,7 +3360,7 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-6">
                       <div>
                         <label className="block text-sm font-medium text-mana-text mb-1">Janela de Entrega</label>
                         <input
@@ -3318,19 +3374,388 @@ export default function AdminDashboard({ onClose, products }: AdminDashboardProp
                           Esta informação aparecerá para o cliente quando ele selecionar "Entrega".
                         </p>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-mana-text mb-1">Janela de Retirada</label>
-                        <input
-                          type="text"
-                          value={pickUpHours}
-                          onChange={(e) => setPickUpHours(e.target.value)}
-                          placeholder="Ex: das 17:30 às 19:00"
-                          className="w-full px-4 py-2 rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
-                        />
-                        <p className="text-xs text-mana-text-light mt-2">
-                          Esta informação aparecerá para o cliente quando ele selecionar "Retirada".
-                        </p>
-                      </div>
+
+                      {/* Seção Janela de Retirada + Informações de Retirada + Regras por Horário */}
+                      {(() => {
+                        const refDate = new Date(nowTick);
+                        const brNow = getBrasiliaTimeParts(refDate);
+                        const isHoursActiveNow = isScheduledFieldActive(
+                          {
+                            enabled: pickUpHoursEnabled,
+                            scheduleEnabled: pickUpHoursScheduleEnabled,
+                            scheduleDays: pickUpHoursScheduleDays,
+                            startTime: pickUpHoursStartTime,
+                            endTime: pickUpHoursEndTime,
+                          },
+                          refDate
+                        );
+                        const isInfoActiveNow = isScheduledFieldActive(
+                          {
+                            enabled: pickUpInfoEnabled,
+                            scheduleEnabled: pickUpInfoScheduleEnabled,
+                            scheduleDays: pickUpInfoScheduleDays,
+                            startTime: pickUpInfoStartTime,
+                            endTime: pickUpInfoEndTime,
+                          },
+                          refDate
+                        );
+
+                        const toggleScheduleDay = (
+                          currentDays: number[],
+                          setDays: React.Dispatch<React.SetStateAction<number[]>>,
+                          dayIdx: number
+                        ) => {
+                          setDays((prev) => {
+                            if (prev.includes(dayIdx)) {
+                              const filtered = prev.filter((d) => d !== dayIdx);
+                              return filtered.length > 0 ? filtered : prev;
+                            }
+                            return [...prev, dayIdx].sort((a, b) => a - b);
+                          });
+                        };
+
+                        return (
+                          <div className="rounded-xl border border-mana-gold/30 bg-mana-bg/40 p-4 sm:p-5 space-y-5">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-mana-gold/20">
+                              <div>
+                                <h4 className="font-bold text-mana-green flex items-center gap-2">
+                                  <Clock size={18} className="text-mana-gold" />
+                                  Configurações da Janela de Retirada
+                                </h4>
+                                <p className="text-xs text-mana-text-light mt-0.5">
+                                  Defina o horário e as informações exibidas ao cliente na retirada, com ativação automática por horário.
+                                </p>
+                              </div>
+                              <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold bg-white px-2.5 py-1 rounded-lg border border-mana-gold/20 text-mana-text self-start sm:self-center">
+                                <Clock size={12} className="text-mana-green" />
+                                Brasília agora: {DAYS_SHORT_PT[brNow.day]} {brNow.formattedTime}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                              {/* Campo 1: Janela de Retirada (Horário) */}
+                              <div className="bg-white rounded-xl p-4 border border-mana-gold/25 shadow-2xs space-y-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <label className="text-sm font-bold text-mana-text">
+                                      1. Janela de Retirada
+                                    </label>
+                                    <span
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                        !pickUpHoursEnabled
+                                          ? 'bg-gray-100 text-gray-600 border-gray-200'
+                                          : isHoursActiveNow
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                                      }`}
+                                    >
+                                      {!pickUpHoursEnabled
+                                        ? 'Desativada'
+                                        : isHoursActiveNow
+                                        ? 'Ativa agora'
+                                        : 'Aguardando horário'}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPickUpHoursEnabled(!pickUpHoursEnabled)}
+                                    title={pickUpHoursEnabled ? 'Desativar janela de retirada' : 'Ativar janela de retirada'}
+                                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                                      pickUpHoursEnabled ? 'bg-mana-green' : 'bg-gray-200'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                        pickUpHoursEnabled ? 'translate-x-6' : 'translate-x-1'
+                                      }`}
+                                    />
+                                  </button>
+                                </div>
+
+                                <input
+                                  type="text"
+                                  value={pickUpHours}
+                                  onChange={(e) => setPickUpHours(e.target.value)}
+                                  placeholder="Ex: das 17:30 às 19:00"
+                                  className="w-full px-3.5 py-2 text-sm rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white"
+                                />
+                                <p className="text-xs text-mana-text-light">
+                                  Horário exibido para o cliente quando ele selecionar "Retirada".
+                                </p>
+
+                                {/* Regra: Ativar Janela de Retirada pelo Horário */}
+                                <div className="pt-2 border-t border-gray-100 space-y-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-xs font-bold text-mana-text flex items-center gap-1.5">
+                                        <Clock size={13} className="text-mana-gold" />
+                                        Ativar janela de retirada pelo horário
+                                      </p>
+                                      <p className="text-[11px] text-mana-text-light">
+                                        {pickUpHoursScheduleEnabled
+                                          ? 'Exibida apenas dentro dos dias e horário programados'
+                                          : 'Sempre exibida enquanto estiver ativada'}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const next = !pickUpHoursScheduleEnabled;
+                                        setPickUpHoursScheduleEnabled(next);
+                                        setNowTick(Date.now());
+                                      }}
+                                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                                        pickUpHoursScheduleEnabled ? 'bg-mana-gold' : 'bg-gray-200'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                          pickUpHoursScheduleEnabled ? 'translate-x-4.5' : 'translate-x-1'
+                                        }`}
+                                      />
+                                    </button>
+                                  </div>
+
+                                  {pickUpHoursScheduleEnabled && (
+                                    <div className="bg-mana-bg/60 rounded-lg p-3 border border-mana-gold/20 space-y-3 animate-in fade-in duration-200">
+                                      <div>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                          <span className="text-[11px] font-bold text-mana-text uppercase">
+                                            Dias ativos
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setPickUpHoursScheduleDays(ALL_DAYS)}
+                                            className="text-[11px] font-semibold text-mana-green hover:underline cursor-pointer"
+                                          >
+                                            Todos os dias
+                                          </button>
+                                        </div>
+                                        <div className="grid grid-cols-7 gap-1">
+                                          {DAYS_SHORT_PT.map((label, idx) => {
+                                            const selected = pickUpHoursScheduleDays.includes(idx);
+                                            return (
+                                              <button
+                                                key={label}
+                                                type="button"
+                                                onClick={() =>
+                                                  toggleScheduleDay(
+                                                    pickUpHoursScheduleDays,
+                                                    setPickUpHoursScheduleDays,
+                                                    idx
+                                                  )
+                                                }
+                                                className={`py-1.5 rounded-md text-[11px] font-bold border transition-colors cursor-pointer ${
+                                                  selected
+                                                    ? 'bg-mana-green text-white border-mana-green'
+                                                    : 'bg-white text-mana-text-light border-gray-200 hover:border-mana-gold/40'
+                                                }`}
+                                              >
+                                                {label}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <label className="block text-[11px] font-bold text-mana-text mb-1">
+                                            Ativar às
+                                          </label>
+                                          <input
+                                            type="time"
+                                            value={pickUpHoursStartTime}
+                                            onChange={(e) => {
+                                              setPickUpHoursStartTime(e.target.value);
+                                              setNowTick(Date.now());
+                                            }}
+                                            className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-mana-gold/30 bg-white focus:outline-none focus:ring-2 focus:ring-mana-green"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-[11px] font-bold text-mana-text mb-1">
+                                            Desativar às
+                                          </label>
+                                          <input
+                                            type="time"
+                                            value={pickUpHoursEndTime}
+                                            onChange={(e) => {
+                                              setPickUpHoursEndTime(e.target.value);
+                                              setNowTick(Date.now());
+                                            }}
+                                            className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-mana-gold/30 bg-white focus:outline-none focus:ring-2 focus:ring-mana-green"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Campo 2: Informações de Retirada (Texto Informativo) */}
+                              <div className="bg-white rounded-xl p-4 border border-mana-gold/25 shadow-2xs space-y-3">
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <label className="text-sm font-bold text-mana-text">
+                                      2. Informações de Retirada
+                                    </label>
+                                    <span
+                                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                        !pickUpInfoEnabled
+                                          ? 'bg-gray-100 text-gray-600 border-gray-200'
+                                          : isInfoActiveNow
+                                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                                      }`}
+                                    >
+                                      {!pickUpInfoEnabled
+                                        ? 'Desativado'
+                                        : isInfoActiveNow
+                                        ? 'Ativo agora'
+                                        : 'Aguardando horário'}
+                                    </span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setPickUpInfoEnabled(!pickUpInfoEnabled)}
+                                    title={pickUpInfoEnabled ? 'Desativar texto informativo' : 'Ativar texto informativo'}
+                                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                                      pickUpInfoEnabled ? 'bg-mana-green' : 'bg-gray-200'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                                        pickUpInfoEnabled ? 'translate-x-6' : 'translate-x-1'
+                                      }`}
+                                    />
+                                  </button>
+                                </div>
+
+                                <textarea
+                                  rows={2}
+                                  value={pickUpInfo}
+                                  onChange={(e) => setPickUpInfo(e.target.value)}
+                                  placeholder="Ex: Compareça ao local no horário informado! Endereço: Rua..."
+                                  className="w-full px-3.5 py-2 text-sm rounded-lg border border-mana-gold/30 focus:outline-none focus:ring-2 focus:ring-mana-green bg-white resize-y min-h-[62px]"
+                                />
+                                <p className="text-xs text-mana-text-light">
+                                  Texto informativo exibido ao cliente quando ele selecionar "Retirada".
+                                </p>
+
+                                {/* Regra: Ativar Texto Informativo de Retirada pelo Horário */}
+                                <div className="pt-2 border-t border-gray-100 space-y-3">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-xs font-bold text-mana-text flex items-center gap-1.5">
+                                        <Clock size={13} className="text-mana-gold" />
+                                        Ativar texto informativo pelo horário
+                                      </p>
+                                      <p className="text-[11px] text-mana-text-light">
+                                        {pickUpInfoScheduleEnabled
+                                          ? 'Exibido apenas dentro dos dias e horário programados'
+                                          : 'Sempre exibido enquanto estiver ativado'}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const next = !pickUpInfoScheduleEnabled;
+                                        setPickUpInfoScheduleEnabled(next);
+                                        setNowTick(Date.now());
+                                      }}
+                                      className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none cursor-pointer ${
+                                        pickUpInfoScheduleEnabled ? 'bg-mana-gold' : 'bg-gray-200'
+                                      }`}
+                                    >
+                                      <span
+                                        className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+                                          pickUpInfoScheduleEnabled ? 'translate-x-4.5' : 'translate-x-1'
+                                        }`}
+                                      />
+                                    </button>
+                                  </div>
+
+                                  {pickUpInfoScheduleEnabled && (
+                                    <div className="bg-mana-bg/60 rounded-lg p-3 border border-mana-gold/20 space-y-3 animate-in fade-in duration-200">
+                                      <div>
+                                        <div className="flex items-center justify-between mb-1.5">
+                                          <span className="text-[11px] font-bold text-mana-text uppercase">
+                                            Dias ativos
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => setPickUpInfoScheduleDays(ALL_DAYS)}
+                                            className="text-[11px] font-semibold text-mana-green hover:underline cursor-pointer"
+                                          >
+                                            Todos os dias
+                                          </button>
+                                        </div>
+                                        <div className="grid grid-cols-7 gap-1">
+                                          {DAYS_SHORT_PT.map((label, idx) => {
+                                            const selected = pickUpInfoScheduleDays.includes(idx);
+                                            return (
+                                              <button
+                                                key={label}
+                                                type="button"
+                                                onClick={() =>
+                                                  toggleScheduleDay(
+                                                    pickUpInfoScheduleDays,
+                                                    setPickUpInfoScheduleDays,
+                                                    idx
+                                                  )
+                                                }
+                                                className={`py-1.5 rounded-md text-[11px] font-bold border transition-colors cursor-pointer ${
+                                                  selected
+                                                    ? 'bg-mana-green text-white border-mana-green'
+                                                    : 'bg-white text-mana-text-light border-gray-200 hover:border-mana-gold/40'
+                                                }`}
+                                              >
+                                                {label}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+
+                                      <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                          <label className="block text-[11px] font-bold text-mana-text mb-1">
+                                            Ativar às
+                                          </label>
+                                          <input
+                                            type="time"
+                                            value={pickUpInfoStartTime}
+                                            onChange={(e) => {
+                                              setPickUpInfoStartTime(e.target.value);
+                                              setNowTick(Date.now());
+                                            }}
+                                            className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-mana-gold/30 bg-white focus:outline-none focus:ring-2 focus:ring-mana-green"
+                                          />
+                                        </div>
+                                        <div>
+                                          <label className="block text-[11px] font-bold text-mana-text mb-1">
+                                            Desativar às
+                                          </label>
+                                          <input
+                                            type="time"
+                                            value={pickUpInfoEndTime}
+                                            onChange={(e) => {
+                                              setPickUpInfoEndTime(e.target.value);
+                                              setNowTick(Date.now());
+                                            }}
+                                            className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-mana-gold/30 bg-white focus:outline-none focus:ring-2 focus:ring-mana-green"
+                                          />
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 
